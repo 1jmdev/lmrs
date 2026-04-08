@@ -9,7 +9,7 @@ pub struct GenerationConfig {
 impl Default for GenerationConfig {
     fn default() -> Self {
         Self {
-            max_tokens: 256,
+            max_tokens: 32_768,
             sampling: Sampling::Greedy,
         }
     }

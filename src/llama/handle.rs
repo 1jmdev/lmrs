@@ -26,7 +26,7 @@ impl Default for LoadConfig {
     fn default() -> Self {
         let threads = default_threads();
         Self {
-            context_size: 8192,
+            context_size: 0,
             batch_size: 2048,
             gpu_layers: -1,
             threads,
@@ -40,6 +40,8 @@ pub struct LlamaHandle {
     ctx: NonNull<ffi::llama_context>,
     vocab: *const ffi::llama_vocab,
     vocab_size: usize,
+    eos_token: Token,
+    eot_token: Token,
 }
 
 impl LlamaHandle {
@@ -60,6 +62,8 @@ impl LlamaHandle {
 
         let vocab = unsafe { ffi::llama_model_get_vocab(model.as_ptr()) };
         let vocab_size = unsafe { ffi::llama_vocab_n_tokens(vocab) as usize };
+        let eos_token = unsafe { ffi::llama_vocab_eos(vocab) };
+        let eot_token = unsafe { ffi::llama_vocab_eot(vocab) };
 
         let mut ctx_params = unsafe { ffi::llama_context_default_params() };
         ctx_params.n_ctx = config.context_size;
@@ -82,6 +86,8 @@ impl LlamaHandle {
             ctx,
             vocab,
             vocab_size,
+            eos_token,
+            eot_token,
         };
         debug!(vocab_size = handle.vocab_size, "llama context initialized");
         Ok(handle)
@@ -89,6 +95,10 @@ impl LlamaHandle {
 
     pub fn count_tokens(&self, text: &str) -> Result<usize, LmrsError> {
         self.tokenize(text).map(|tokens| tokens.len())
+    }
+
+    pub fn context_size(&self) -> usize {
+        unsafe { ffi::llama_n_ctx(self.ctx.as_ptr()) as usize }
     }
 
     pub fn tokenize(&self, text: &str) -> Result<Vec<Token>, LmrsError> {
@@ -101,7 +111,7 @@ impl LlamaHandle {
                 tokens.as_mut_ptr(),
                 tokens.len() as i32,
                 true,
-                false,
+                true,
             )
         };
 
@@ -115,7 +125,7 @@ impl LlamaHandle {
                     tokens.as_mut_ptr(),
                     tokens.len() as i32,
                     true,
-                    false,
+                    true,
                 )
             };
         }
@@ -146,7 +156,12 @@ impl LlamaHandle {
     }
 
     pub fn token_is_eog(&self, token: Token) -> bool {
-        unsafe { ffi::llama_vocab_is_eog(self.vocab, token) }
+        if unsafe { ffi::llama_vocab_is_eog(self.vocab, token) } {
+            return true;
+        }
+
+        (self.eos_token != ffi::LLAMA_TOKEN_NULL && token == self.eos_token)
+            || (self.eot_token != ffi::LLAMA_TOKEN_NULL && token == self.eot_token)
     }
 
     pub fn token_to_piece_bytes(&self, token: Token) -> Result<Vec<u8>, LmrsError> {
@@ -229,10 +244,25 @@ impl LlamaHandle {
                 template_names.push(name);
             }
         }
-        for name in ["chatml", "llama3", "phi3", "llama2", "mistral-v1", "gemma"] {
-            let template = CString::new(name).map_err(|_| LmrsError::CStringNul)?;
-            if seen_templates.insert(template.as_bytes().to_vec()) {
-                template_names.push(template);
+        unsafe {
+            let count = ffi::llama_chat_builtin_templates(std::ptr::null_mut(), 0);
+            if count > 0 {
+                let mut builtin_templates = vec![std::ptr::null(); count as usize];
+                let copied = ffi::llama_chat_builtin_templates(
+                    builtin_templates.as_mut_ptr(),
+                    builtin_templates.len(),
+                );
+                let copied = copied.clamp(0, builtin_templates.len() as i32) as usize;
+                for template_ptr in builtin_templates.into_iter().take(copied) {
+                    if template_ptr.is_null() {
+                        continue;
+                    }
+                    let template = CString::new(CStr::from_ptr(template_ptr).to_bytes())
+                        .map_err(|_| LmrsError::CStringNul)?;
+                    if seen_templates.insert(template.as_bytes().to_vec()) {
+                        template_names.push(template);
+                    }
+                }
             }
         }
 

@@ -99,6 +99,14 @@ impl Runtime {
             return Ok(String::new());
         }
 
+        let context_size = self.handle.context_size();
+        let available_generation_tokens = context_size.saturating_sub(prompt_tokens.len());
+        let max_tokens = config.max_tokens.min(available_generation_tokens);
+
+        if max_tokens == 0 {
+            return Ok(String::new());
+        }
+
         let mut ingest = prompt_tokens.as_slice().to_vec();
         self.handle.decode(&mut ingest)?;
 
@@ -108,9 +116,9 @@ impl Runtime {
             }
         }
 
-        let mut output_bytes = Vec::with_capacity(config.max_tokens.saturating_mul(4));
+        let mut output_bytes = Vec::with_capacity(max_tokens.saturating_mul(4));
         let mut generated = 0usize;
-        for _ in 0..config.max_tokens {
+        for _ in 0..max_tokens {
             let token = self.sample_next_token(&config.sampling)?;
             if self.handle.token_is_eog(token) {
                 break;
