@@ -1,0 +1,292 @@
+use std::ffi::{CStr, CString};
+use std::path::Path;
+use std::ptr::NonNull;
+
+use crate::api::Message;
+use crate::error::LmrsError;
+use crate::llama::backend::ensure_backend_initialized;
+use crate::llama::ffi;
+
+pub type Token = ffi::llama_token;
+
+#[derive(Clone, Copy, Debug)]
+pub struct LoadConfig {
+    pub context_size: u32,
+    pub batch_size: u32,
+    pub gpu_layers: i32,
+    pub threads: i32,
+    pub threads_batch: i32,
+}
+
+impl Default for LoadConfig {
+    fn default() -> Self {
+        let threads = default_threads();
+        Self {
+            context_size: 8192,
+            batch_size: 2048,
+            gpu_layers: -1,
+            threads,
+            threads_batch: threads,
+        }
+    }
+}
+
+pub struct LlamaHandle {
+    model: NonNull<ffi::llama_model>,
+    ctx: NonNull<ffi::llama_context>,
+    vocab: *const ffi::llama_vocab,
+    vocab_size: usize,
+}
+
+impl LlamaHandle {
+    pub fn load(model_path: &Path, config: LoadConfig) -> Result<Self, LmrsError> {
+        ensure_backend_initialized();
+
+        let path = model_path
+            .to_str()
+            .ok_or_else(|| LmrsError::ModelPathNotUtf8(model_path.to_path_buf()))?;
+        let c_path = CString::new(path).map_err(|_| LmrsError::CStringNul)?;
+
+        let mut model_params = unsafe { ffi::llama_model_default_params() };
+        model_params.n_gpu_layers = config.gpu_layers;
+
+        let model = unsafe { ffi::llama_model_load_from_file(c_path.as_ptr(), model_params) };
+        let model = NonNull::new(model).ok_or(LmrsError::ModelLoadFailed)?;
+
+        let vocab = unsafe { ffi::llama_model_get_vocab(model.as_ptr()) };
+        let vocab_size = unsafe { ffi::llama_vocab_n_tokens(vocab) as usize };
+
+        let mut ctx_params = unsafe { ffi::llama_context_default_params() };
+        ctx_params.n_ctx = config.context_size;
+        ctx_params.n_batch = config.batch_size;
+        ctx_params.n_seq_max = 1;
+        ctx_params.n_threads = config.threads;
+        ctx_params.n_threads_batch = config.threads_batch;
+
+        let ctx = unsafe { ffi::llama_init_from_model(model.as_ptr(), ctx_params) };
+        let ctx = match NonNull::new(ctx) {
+            Some(ctx) => ctx,
+            None => {
+                unsafe { ffi::llama_model_free(model.as_ptr()) };
+                return Err(LmrsError::ContextInitFailed);
+            }
+        };
+
+        Ok(Self {
+            model,
+            ctx,
+            vocab,
+            vocab_size,
+        })
+    }
+
+    pub fn count_tokens(&self, text: &str) -> Result<usize, LmrsError> {
+        self.tokenize(text).map(|tokens| tokens.len())
+    }
+
+    pub fn tokenize(&self, text: &str) -> Result<Vec<Token>, LmrsError> {
+        let mut tokens = vec![0; text.len() + 8];
+        let mut count = unsafe {
+            ffi::llama_tokenize(
+                self.vocab,
+                text.as_ptr().cast(),
+                text.len() as i32,
+                tokens.as_mut_ptr(),
+                tokens.len() as i32,
+                true,
+                false,
+            )
+        };
+
+        if count < 0 {
+            tokens.resize((-count) as usize, 0);
+            count = unsafe {
+                ffi::llama_tokenize(
+                    self.vocab,
+                    text.as_ptr().cast(),
+                    text.len() as i32,
+                    tokens.as_mut_ptr(),
+                    tokens.len() as i32,
+                    true,
+                    false,
+                )
+            };
+        }
+
+        if count < 0 {
+            return Err(LmrsError::TokenizeFailed(count));
+        }
+
+        tokens.truncate(count as usize);
+        Ok(tokens)
+    }
+
+    pub fn decode(&self, tokens: &mut [Token]) -> Result<(), LmrsError> {
+        let batch = unsafe { ffi::llama_batch_get_one(tokens.as_mut_ptr(), tokens.len() as i32) };
+        let result = unsafe { ffi::llama_decode(self.ctx.as_ptr(), batch) };
+        if result == 0 {
+            Ok(())
+        } else {
+            Err(LmrsError::DecodeFailed(result))
+        }
+    }
+
+    pub fn logits(&self) -> Result<&[f32], LmrsError> {
+        let logits = unsafe { ffi::llama_get_logits_ith(self.ctx.as_ptr(), -1) };
+        let logits = NonNull::new(logits).ok_or(LmrsError::NoLogits)?;
+        let logits = unsafe { std::slice::from_raw_parts(logits.as_ptr(), self.vocab_size) };
+        Ok(logits)
+    }
+
+    pub fn token_is_eog(&self, token: Token) -> bool {
+        unsafe { ffi::llama_vocab_is_eog(self.vocab, token) }
+    }
+
+    pub fn token_to_piece_bytes(&self, token: Token) -> Result<Vec<u8>, LmrsError> {
+        let mut buffer = vec![0u8; 64];
+        loop {
+            let written = unsafe {
+                ffi::llama_token_to_piece(
+                    self.vocab,
+                    token,
+                    buffer.as_mut_ptr().cast(),
+                    buffer.len() as i32,
+                    0,
+                    true,
+                )
+            };
+
+            if written >= 0 && written as usize <= buffer.len() {
+                buffer.truncate(written as usize);
+                return Ok(buffer);
+            }
+
+            if written < 0 {
+                buffer.resize((-written) as usize, 0);
+                let retry = unsafe {
+                    ffi::llama_token_to_piece(
+                        self.vocab,
+                        token,
+                        buffer.as_mut_ptr().cast(),
+                        buffer.len() as i32,
+                        0,
+                        true,
+                    )
+                };
+                if retry < 0 {
+                    return Err(LmrsError::TokenToPieceFailed(retry));
+                }
+                buffer.truncate(retry as usize);
+                return Ok(buffer);
+            }
+
+            buffer.resize(written as usize, 0);
+        }
+    }
+
+    pub fn apply_chat_template(&self, messages: &[Message]) -> Result<String, LmrsError> {
+        let roles = messages
+            .iter()
+            .map(|message| CString::new(message.role.as_str()).map_err(|_| LmrsError::CStringNul))
+            .collect::<Result<Vec<_>, _>>()?;
+        let contents = messages
+            .iter()
+            .map(|message| {
+                CString::new(message.content.replace('\0', "")).map_err(|_| LmrsError::CStringNul)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let chat_messages = roles
+            .iter()
+            .zip(contents.iter())
+            .map(|(role, content)| ffi::llama_chat_message {
+                role: role.as_ptr(),
+                content: content.as_ptr(),
+            })
+            .collect::<Vec<_>>();
+
+        let estimate = messages
+            .iter()
+            .map(|message| message.role.len() + message.content.len() + 64)
+            .sum::<usize>()
+            .max(512);
+
+        let mut template_names = Vec::new();
+        unsafe {
+            let ptr = ffi::llama_model_chat_template(self.model.as_ptr(), std::ptr::null());
+            if !ptr.is_null() {
+                template_names.push(
+                    CString::new(CStr::from_ptr(ptr).to_bytes())
+                        .map_err(|_| LmrsError::CStringNul)?,
+                );
+            }
+        }
+        for name in ["chatml", "llama3", "phi3", "llama2", "mistral-v1", "gemma"] {
+            let template = CString::new(name).map_err(|_| LmrsError::CStringNul)?;
+            if !template_names
+                .iter()
+                .any(|candidate| candidate.as_c_str() == template.as_c_str())
+            {
+                template_names.push(template);
+            }
+        }
+
+        for template in template_names {
+            let mut buffer = vec![0u8; estimate];
+            let written = unsafe {
+                ffi::llama_chat_apply_template(
+                    template.as_ptr(),
+                    chat_messages.as_ptr(),
+                    chat_messages.len(),
+                    true,
+                    buffer.as_mut_ptr().cast(),
+                    buffer.len() as i32,
+                )
+            };
+
+            if written >= 0 && written as usize <= buffer.len() {
+                let rendered = String::from_utf8_lossy(&buffer[..written as usize]).into_owned();
+                if !rendered.is_empty() {
+                    return Ok(rendered);
+                }
+            }
+
+            if written > 0 {
+                buffer.resize(written as usize, 0);
+                let rewritten = unsafe {
+                    ffi::llama_chat_apply_template(
+                        template.as_ptr(),
+                        chat_messages.as_ptr(),
+                        chat_messages.len(),
+                        true,
+                        buffer.as_mut_ptr().cast(),
+                        buffer.len() as i32,
+                    )
+                };
+                if rewritten >= 0 && rewritten as usize <= buffer.len() {
+                    let rendered =
+                        String::from_utf8_lossy(&buffer[..rewritten as usize]).into_owned();
+                    if !rendered.is_empty() {
+                        return Ok(rendered);
+                    }
+                }
+            }
+        }
+
+        Err(LmrsError::TemplateApplyFailed)
+    }
+}
+
+impl Drop for LlamaHandle {
+    fn drop(&mut self) {
+        unsafe {
+            ffi::llama_free(self.ctx.as_ptr());
+            ffi::llama_model_free(self.model.as_ptr());
+        }
+    }
+}
+
+fn default_threads() -> i32 {
+    std::thread::available_parallelism()
+        .map(|threads| threads.get() as i32)
+        .unwrap_or(4)
+}
