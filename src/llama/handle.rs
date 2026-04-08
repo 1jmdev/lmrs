@@ -2,6 +2,10 @@ use std::ffi::{CStr, CString};
 use std::path::Path;
 use std::ptr::NonNull;
 
+use hashbrown::HashSet;
+use smallvec::SmallVec;
+use tracing::{debug, instrument};
+
 use crate::api::Message;
 use crate::error::LmrsError;
 use crate::llama::backend::ensure_backend_initialized;
@@ -39,6 +43,7 @@ pub struct LlamaHandle {
 }
 
 impl LlamaHandle {
+    #[instrument(skip(config), fields(model_path = %model_path.display()))]
     pub fn load(model_path: &Path, config: LoadConfig) -> Result<Self, LmrsError> {
         ensure_backend_initialized();
 
@@ -72,12 +77,14 @@ impl LlamaHandle {
             }
         };
 
-        Ok(Self {
+        let handle = Self {
             model,
             ctx,
             vocab,
             vocab_size,
-        })
+        };
+        debug!(vocab_size = handle.vocab_size, "llama context initialized");
+        Ok(handle)
     }
 
     pub fn count_tokens(&self, text: &str) -> Result<usize, LmrsError> {
@@ -143,32 +150,33 @@ impl LlamaHandle {
     }
 
     pub fn token_to_piece_bytes(&self, token: Token) -> Result<Vec<u8>, LmrsError> {
-        let mut buffer = vec![0u8; 64];
+        let mut scratch: SmallVec<[u8; 64]> = SmallVec::with_capacity(64);
+        scratch.resize(64, 0);
         loop {
             let written = unsafe {
                 ffi::llama_token_to_piece(
                     self.vocab,
                     token,
-                    buffer.as_mut_ptr().cast(),
-                    buffer.len() as i32,
+                    scratch.as_mut_ptr().cast(),
+                    scratch.len() as i32,
                     0,
                     true,
                 )
             };
 
-            if written >= 0 && written as usize <= buffer.len() {
-                buffer.truncate(written as usize);
-                return Ok(buffer);
+            if written >= 0 && written as usize <= scratch.len() {
+                scratch.truncate(written as usize);
+                return Ok(scratch.into_vec());
             }
 
             if written < 0 {
-                buffer.resize((-written) as usize, 0);
+                scratch.resize((-written) as usize, 0);
                 let retry = unsafe {
                     ffi::llama_token_to_piece(
                         self.vocab,
                         token,
-                        buffer.as_mut_ptr().cast(),
-                        buffer.len() as i32,
+                        scratch.as_mut_ptr().cast(),
+                        scratch.len() as i32,
                         0,
                         true,
                     )
@@ -176,11 +184,11 @@ impl LlamaHandle {
                 if retry < 0 {
                     return Err(LmrsError::TokenToPieceFailed(retry));
                 }
-                buffer.truncate(retry as usize);
-                return Ok(buffer);
+                scratch.truncate(retry as usize);
+                return Ok(scratch.into_vec());
             }
 
-            buffer.resize(written as usize, 0);
+            scratch.resize(written as usize, 0);
         }
     }
 
@@ -210,22 +218,20 @@ impl LlamaHandle {
             .sum::<usize>()
             .max(512);
 
-        let mut template_names = Vec::new();
+        let mut template_names = Vec::with_capacity(8);
+        let mut seen_templates = HashSet::with_capacity(8);
         unsafe {
             let ptr = ffi::llama_model_chat_template(self.model.as_ptr(), std::ptr::null());
             if !ptr.is_null() {
-                template_names.push(
-                    CString::new(CStr::from_ptr(ptr).to_bytes())
-                        .map_err(|_| LmrsError::CStringNul)?,
-                );
+                let name = CString::new(CStr::from_ptr(ptr).to_bytes())
+                    .map_err(|_| LmrsError::CStringNul)?;
+                seen_templates.insert(name.as_bytes().to_vec());
+                template_names.push(name);
             }
         }
         for name in ["chatml", "llama3", "phi3", "llama2", "mistral-v1", "gemma"] {
             let template = CString::new(name).map_err(|_| LmrsError::CStringNul)?;
-            if !template_names
-                .iter()
-                .any(|candidate| candidate.as_c_str() == template.as_c_str())
-            {
+            if seen_templates.insert(template.as_bytes().to_vec()) {
                 template_names.push(template);
             }
         }

@@ -1,14 +1,15 @@
 use crate::api::{Sampling, TemperatureSampling};
 use crate::llama::Token;
+use smallvec::SmallVec;
 
 pub fn sample_token(logits: &[f32], sampling: &Sampling, rng: &mut XorShift64) -> Option<Token> {
     match sampling {
-        Sampling::Greedy => greedy(logits),
+        Sampling::Greedy => greedy_token(logits),
         Sampling::Temperature(settings) => temperature_sample(logits, settings, rng),
     }
 }
 
-fn greedy(logits: &[f32]) -> Option<Token> {
+pub fn greedy_token(logits: &[f32]) -> Option<Token> {
     logits
         .iter()
         .enumerate()
@@ -22,7 +23,7 @@ fn temperature_sample(
     rng: &mut XorShift64,
 ) -> Option<Token> {
     if settings.temperature <= 0.0 {
-        return greedy(logits);
+        return greedy_token(logits);
     }
 
     let mut candidates = logits
@@ -30,7 +31,7 @@ fn temperature_sample(
         .enumerate()
         .filter(|(_, logit)| logit.is_finite())
         .map(|(idx, logit)| (idx as Token, *logit))
-        .collect::<Vec<_>>();
+        .collect::<SmallVec<[(Token, f32); 256]>>();
 
     if candidates.is_empty() {
         return None;
@@ -46,7 +47,7 @@ fn temperature_sample(
         .map(|(_, logit)| *logit)
         .max_by(|left, right| left.total_cmp(right))?;
 
-    let mut weights = Vec::with_capacity(candidates.len());
+    let mut weights: SmallVec<[f64; 256]> = SmallVec::with_capacity(candidates.len());
     let mut total = 0.0f64;
     for (_, logit) in &candidates {
         let scaled = ((*logit - max_logit) / settings.temperature) as f64;

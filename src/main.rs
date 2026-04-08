@@ -1,12 +1,20 @@
 use lmrs::{GenerationConfig, Message, ModelSource, Runtime};
 use std::io::{self, Write};
 use std::time::Instant;
+use tracing::info;
 
 fn main() -> Result<(), lmrs::LmrsError> {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .compact()
+        .with_target(false)
+        .try_init();
+
     let model_path = std::env::var("LMRS_MODEL").map_err(|_| {
         lmrs::LmrsError::UnsupportedModelSource("set LMRS_MODEL to a local model path".to_string())
     })?;
 
+    info!(model = %model_path, "creating runtime");
     let runtime = Runtime::from_source(ModelSource::local(model_path))?;
 
     let started_at = Instant::now();

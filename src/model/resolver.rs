@@ -6,6 +6,7 @@ use std::process::Command;
 
 use crate::error::LmrsError;
 use crate::model::{ModelArtifact, ModelSource};
+use tracing::{debug, instrument};
 
 #[derive(Clone, Debug)]
 pub struct ModelResolverConfig {
@@ -28,6 +29,7 @@ impl Default for ModelResolverConfig {
     }
 }
 
+#[derive(Debug)]
 pub struct ModelResolver {
     config: ModelResolverConfig,
 }
@@ -37,6 +39,7 @@ impl ModelResolver {
         Self { config }
     }
 
+    #[instrument(skip(self, source))]
     pub fn resolve(&self, source: &ModelSource) -> Result<ModelArtifact, LmrsError> {
         match source {
             ModelSource::LocalPath(path) => self.resolve_local(path),
@@ -49,6 +52,7 @@ impl ModelResolver {
     }
 
     fn resolve_local(&self, path: &Path) -> Result<ModelArtifact, LmrsError> {
+        debug!(path = %path.display(), "resolving local model source");
         if !path.exists() {
             return Err(LmrsError::ModelNotFound(path.to_path_buf()));
         }
@@ -85,6 +89,7 @@ impl ModelResolver {
         revision: Option<&str>,
         file: Option<&str>,
     ) -> Result<ModelArtifact, LmrsError> {
+        debug!(repo, revision, file, "resolving hugging face model source");
         if !self.config.allow_download {
             return Err(LmrsError::UnsupportedModelSource(
                 "download is disabled in resolver config".to_string(),
@@ -135,6 +140,7 @@ impl ModelResolver {
         source_dir: &Path,
         source_label: &str,
     ) -> Result<ModelArtifact, LmrsError> {
+        debug!(source = %source_dir.display(), source_label, "converting model to gguf");
         if !self.config.allow_conversion {
             return Err(LmrsError::UnsupportedModelSource(
                 "conversion is disabled in resolver config".to_string(),

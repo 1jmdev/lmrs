@@ -1,12 +1,14 @@
 use std::sync::{Arc, RwLock};
+use std::time::Instant;
 
 use crate::api::{GenerationConfig, Message, Sampling};
-use crate::cache::{FastCache, hash_text};
+use crate::cache::{hash_text, FastCache};
 use crate::error::LmrsError;
 use crate::llama::{LlamaHandle, Token};
 use crate::model::{ModelArtifact, ModelResolver, ModelSource};
 use crate::runtime::config::RuntimeConfig;
-use crate::runtime::sampler::{XorShift64, sample_token};
+use crate::runtime::sampler::{greedy_token, sample_token, XorShift64};
+use tracing::{debug, instrument};
 
 pub struct Runtime {
     handle: LlamaHandle,
@@ -17,25 +19,33 @@ pub struct Runtime {
 }
 
 impl Runtime {
+    #[instrument(skip(source))]
     pub fn from_source(source: ModelSource) -> Result<Self, LmrsError> {
         Self::from_source_with_config(source, RuntimeConfig::default())
     }
 
+    #[instrument(skip(source, config))]
     pub fn from_source_with_config(
         source: ModelSource,
         config: RuntimeConfig,
     ) -> Result<Self, LmrsError> {
+        let started = Instant::now();
         let resolver = ModelResolver::new(config.resolver.clone());
         let artifact = resolver.resolve(&source)?;
         let handle = LlamaHandle::load(&artifact.gguf_path, config.load)?;
 
-        Ok(Self {
+        let runtime = Self {
             handle,
             artifact,
             prompt_cache: FastCache::new(config.prompt_cache_size),
             piece_cache: FastCache::new(config.piece_cache_size),
             rng: RwLock::new(XorShift64::new(0x4D59_444F_4D31_4E47)),
-        })
+        };
+        debug!(
+            load_ms = started.elapsed().as_millis() as u64,
+            "runtime initialized"
+        );
+        Ok(runtime)
     }
 
     pub fn artifact(&self) -> &ModelArtifact {
@@ -75,6 +85,7 @@ impl Runtime {
     where
         F: FnMut(&[u8]),
     {
+        let started = Instant::now();
         let prompt = self.handle.apply_chat_template(messages)?;
         let prompt_key = hash_text(&prompt);
         let prompt_tokens = match self.prompt_cache.get(prompt_key) {
@@ -98,6 +109,7 @@ impl Runtime {
         }
 
         let mut output_bytes = Vec::with_capacity(config.max_tokens.saturating_mul(4));
+        let mut generated = 0usize;
         for _ in 0..config.max_tokens {
             let token = self.sample_next_token(&config.sampling)?;
             if self.handle.token_is_eog(token) {
@@ -110,6 +122,17 @@ impl Runtime {
 
             let mut next = [token];
             self.handle.decode(&mut next)?;
+            generated += 1;
+        }
+
+        let elapsed = started.elapsed();
+        if generated > 0 {
+            debug!(
+                generated,
+                elapsed_ms = elapsed.as_millis() as u64,
+                tok_per_sec = (generated as f64 / elapsed.as_secs_f64()),
+                "generation completed"
+            );
         }
 
         Ok(String::from_utf8_lossy(&output_bytes).trim().to_string())
@@ -117,10 +140,15 @@ impl Runtime {
 
     fn sample_next_token(&self, sampling: &Sampling) -> Result<Token, LmrsError> {
         let logits = self.handle.logits()?;
-        let token = if let Ok(mut rng) = self.rng.write() {
-            sample_token(logits, sampling, &mut rng)
-        } else {
-            None
+        let token = match sampling {
+            Sampling::Greedy => greedy_token(logits),
+            Sampling::Temperature(_) => {
+                if let Ok(mut rng) = self.rng.write() {
+                    sample_token(logits, sampling, &mut rng)
+                } else {
+                    None
+                }
+            }
         };
         token.ok_or(LmrsError::NoLogits)
     }
