@@ -1,6 +1,10 @@
-use lmrs::{GenerationConfig, Message, ModelSource, Runtime};
+use lmrs::{GenerationConfig, Message, ModelSource, Runtime, StreamChunk};
 use std::io::{self, BufRead, Write};
 use std::time::Instant;
+
+const ANSI_RESET: &str = "\x1b[0m";
+const ANSI_GRAY: &str = "\x1b[90m";
+const ANSI_BOLD_GRAY: &str = "\x1b[1;90m";
 
 fn main() -> Result<(), lmrs::LmrsError> {
     let _ = tracing_subscriber::fmt()
@@ -24,10 +28,10 @@ fn main() -> Result<(), lmrs::LmrsError> {
 
     loop {
         print!("You: ");
-        stdout.lock().flush().unwrap();
+        let _ = stdout.lock().flush();
 
         let mut input = String::new();
-        stdin.lock().read_line(&mut input).unwrap();
+        let _ = stdin.lock().read_line(&mut input);
         let input = input.trim();
 
         if input.is_empty() {
@@ -41,18 +45,40 @@ fn main() -> Result<(), lmrs::LmrsError> {
         messages.push(Message::user(input));
 
         print!("Assistant: ");
-        stdout.lock().flush().unwrap();
+        let _ = stdout.lock().flush();
 
         let started_at = Instant::now();
         let mut first_token_at = None;
 
-        let output = runtime.generate_stream(&messages, GenerationConfig::default(), |chunk| {
-            if first_token_at.is_none() && !chunk.is_empty() {
-                first_token_at = Some(started_at.elapsed());
-            }
-            let _ = stdout.lock().write_all(chunk);
-            let _ = stdout.lock().flush();
-        })?;
+        let output =
+            runtime.generate_stream_events(&messages, GenerationConfig::default(), |chunk| {
+                if first_token_at.is_none() {
+                    first_token_at = Some(started_at.elapsed());
+                }
+
+                let mut lock = stdout.lock();
+                match chunk {
+                    StreamChunk::Content(content) => {
+                        let _ = lock.write_all(&content);
+                    }
+                    StreamChunk::ThinkingStarted => {
+                        let _ = lock.write_all(b"\n");
+                        let _ = lock.write_all(ANSI_BOLD_GRAY.as_bytes());
+                        let _ = lock.write_all(b"Thinking...");
+                        let _ = lock.write_all(ANSI_RESET.as_bytes());
+                        let _ = lock.write_all(b"\n");
+                    }
+                    StreamChunk::Thinking(thinking) => {
+                        let _ = lock.write_all(ANSI_GRAY.as_bytes());
+                        let _ = lock.write_all(&thinking);
+                        let _ = lock.write_all(ANSI_RESET.as_bytes());
+                    }
+                    StreamChunk::ThinkingFinished => {
+                        let _ = lock.write_all(ANSI_RESET.as_bytes());
+                    }
+                }
+                let _ = lock.flush();
+            })?;
 
         let completed_at = started_at.elapsed();
         let generated_tokens = runtime.count_tokens(&output)?;

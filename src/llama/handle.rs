@@ -254,7 +254,11 @@ impl LlamaHandle {
         }
     }
 
-    pub fn apply_chat_template(&self, messages: &[Message]) -> Result<String, LmrsError> {
+    pub fn apply_chat_template(
+        &self,
+        messages: &[Message],
+        enable_thinking: bool,
+    ) -> Result<String, LmrsError> {
         let roles = messages
             .iter()
             .map(|message| CString::new(message.role.as_str()).map_err(|_| LmrsError::CStringNul))
@@ -314,6 +318,10 @@ impl LlamaHandle {
         }
 
         for template in template_names {
+            let template_supports_thinking = template
+                .as_bytes()
+                .windows(THINK_TAG.len())
+                .any(|window| window == THINK_TAG);
             let mut buffer = vec![0u8; estimate];
             let written = unsafe {
                 ffi::llama_chat_apply_template(
@@ -327,7 +335,11 @@ impl LlamaHandle {
             };
 
             if written >= 0 && written as usize <= buffer.len() {
-                let rendered = String::from_utf8_lossy(&buffer[..written as usize]).into_owned();
+                let mut rendered =
+                    String::from_utf8_lossy(&buffer[..written as usize]).into_owned();
+                if enable_thinking && template_supports_thinking {
+                    ensure_thinking_prompt(&mut rendered);
+                }
                 if !rendered.is_empty() {
                     return Ok(rendered);
                 }
@@ -346,8 +358,11 @@ impl LlamaHandle {
                     )
                 };
                 if rewritten >= 0 && rewritten as usize <= buffer.len() {
-                    let rendered =
+                    let mut rendered =
                         String::from_utf8_lossy(&buffer[..rewritten as usize]).into_owned();
+                    if enable_thinking && template_supports_thinking {
+                        ensure_thinking_prompt(&mut rendered);
+                    }
                     if !rendered.is_empty() {
                         return Ok(rendered);
                     }
@@ -357,6 +372,17 @@ impl LlamaHandle {
 
         Err(LmrsError::TemplateApplyFailed)
     }
+}
+
+const THINK_TAG: &[u8] = b"<think>";
+
+fn ensure_thinking_prompt(rendered: &mut String) {
+    if rendered.trim_end().ends_with("<think>") {
+        return;
+    }
+
+    rendered.push('\n');
+    rendered.push_str("<think>\n");
 }
 
 impl Drop for LlamaHandle {

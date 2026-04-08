@@ -8,6 +8,8 @@ use crate::llama::{LlamaHandle, Token};
 use crate::model::{ModelArtifact, ModelResolver, ModelSource};
 use crate::runtime::config::RuntimeConfig;
 use crate::runtime::sampler::{greedy_token, sample_token, XorShift64};
+use crate::runtime::thinking_parser::ThinkingParser;
+use crate::runtime::StreamChunk;
 use tracing::{debug, instrument};
 
 pub struct Runtime {
@@ -64,10 +66,26 @@ impl Runtime {
         &self,
         messages: &[Message],
         config: GenerationConfig,
-        on_chunk: F,
+        mut on_chunk: F,
     ) -> Result<String, LmrsError>
     where
         F: FnMut(&[u8]),
+    {
+        self.generate_stream_events(messages, config, |chunk| {
+            if let StreamChunk::Content(content) = chunk {
+                on_chunk(&content);
+            }
+        })
+    }
+
+    pub fn generate_stream_events<F>(
+        &self,
+        messages: &[Message],
+        config: GenerationConfig,
+        on_chunk: F,
+    ) -> Result<String, LmrsError>
+    where
+        F: FnMut(StreamChunk),
     {
         self.generate_with_callback(messages, config, on_chunk)
     }
@@ -83,10 +101,12 @@ impl Runtime {
         mut on_chunk: F,
     ) -> Result<String, LmrsError>
     where
-        F: FnMut(&[u8]),
+        F: FnMut(StreamChunk),
     {
         let started = Instant::now();
-        let prompt = self.handle.apply_chat_template(messages)?;
+        let prompt = self
+            .handle
+            .apply_chat_template(messages, config.enable_thinking)?;
         let prompt_key = hash_text(&prompt);
         let prompt_tokens = match self.prompt_cache.get(prompt_key) {
             Some(tokens) => tokens,
@@ -116,6 +136,7 @@ impl Runtime {
             }
         }
 
+        let mut parser = ThinkingParser::new();
         let mut output_bytes = Vec::with_capacity(max_tokens.saturating_mul(4));
         let mut generated = 0usize;
         for _ in 0..max_tokens {
@@ -125,13 +146,14 @@ impl Runtime {
             }
 
             let piece = self.token_piece(token)?;
-            on_chunk(&piece);
-            output_bytes.extend_from_slice(&piece);
+            parser.push(&piece, &mut output_bytes, &mut on_chunk);
 
             let mut next = [token];
             self.handle.decode(&mut next)?;
             generated += 1;
         }
+
+        parser.finish(&mut output_bytes, &mut on_chunk);
 
         let elapsed = started.elapsed();
         if generated > 0 {
