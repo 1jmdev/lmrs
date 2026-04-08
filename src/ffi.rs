@@ -9,3 +9,7 @@
 #![allow(clippy::all)]
 
 include!(concat!(env!("OUT_DIR"), "/llama_bindings.rs"));
+
+unsafe extern "C" {
+    pub fn ggml_backend_load_all_from_path(dir_path: *const std::os::raw::c_char);
+}

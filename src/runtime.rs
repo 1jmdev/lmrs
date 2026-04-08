@@ -52,6 +52,7 @@ impl LlamaRuntime {
         }
 
         BACKEND_INIT.call_once(|| unsafe {
+            ffi::ggml_backend_load_all_from_path(std::ptr::null());
             ffi::llama_backend_init();
         });
 
@@ -60,7 +61,7 @@ impl LlamaRuntime {
         let model_path = CString::new(model_path).map_err(|_| LmrsError::CStringNul)?;
 
         let mut model_params = unsafe { ffi::llama_model_default_params() };
-        model_params.n_gpu_layers = 0;
+        model_params.n_gpu_layers = -1;
 
         let model = unsafe { ffi::llama_model_load_from_file(model_path.as_ptr(), model_params) };
         let model = NonNull::new(model).ok_or(LmrsError::ModelLoadFailed)?;
@@ -74,8 +75,6 @@ impl LlamaRuntime {
         ctx_params.n_seq_max = 1;
         ctx_params.n_threads = thread_count();
         ctx_params.n_threads_batch = thread_count();
-        ctx_params.flash_attn_type = ffi::llama_flash_attn_type_LLAMA_FLASH_ATTN_TYPE_DISABLED;
-        ctx_params.offload_kqv = false;
 
         let ctx = unsafe { ffi::llama_init_from_model(model.as_ptr(), ctx_params) };
         let ctx = match NonNull::new(ctx) {
@@ -127,6 +126,10 @@ impl LlamaRuntime {
         Ok(String::from_utf8_lossy(&output_bytes).trim().to_string())
     }
 
+    pub fn count_tokens(&self, text: &str) -> Result<usize, LmrsError> {
+        self.tokenize(text).map(|tokens| tokens.len())
+    }
+
     fn apply_chat_template(&self, messages: &[Message]) -> Result<String, LmrsError> {
         let role_strings = messages
             .iter()
@@ -147,40 +150,35 @@ impl LlamaRuntime {
             })
             .collect::<Vec<_>>();
 
-        let template = unsafe {
-            let ptr = ffi::llama_model_chat_template(self.model.as_ptr(), std::ptr::null());
-            if ptr.is_null() {
-                CString::new("llama3").map_err(|_| LmrsError::CStringNul)?
-            } else {
-                CString::new(CStr::from_ptr(ptr).to_bytes()).map_err(|_| LmrsError::CStringNul)?
-            }
-        };
-
         let estimate = messages
             .iter()
             .map(|message| message.role.len() + message.content.len() + 64)
             .sum::<usize>()
             .max(512);
-        let mut buffer = vec![0u8; estimate];
 
-        let written = unsafe {
-            ffi::llama_chat_apply_template(
-                template.as_ptr(),
-                chat_messages.as_ptr(),
-                chat_messages.len(),
-                true,
-                buffer.as_mut_ptr().cast(),
-                buffer.len() as i32,
-            )
-        };
-
-        if written < 0 {
-            return Err(LmrsError::TemplateApplyFailed);
+        let mut template_names = Vec::new();
+        unsafe {
+            let ptr = ffi::llama_model_chat_template(self.model.as_ptr(), std::ptr::null());
+            if !ptr.is_null() {
+                template_names.push(
+                    CString::new(CStr::from_ptr(ptr).to_bytes())
+                        .map_err(|_| LmrsError::CStringNul)?,
+                );
+            }
+        }
+        for name in ["chatml", "llama3", "phi3", "llama2", "mistral-v1", "gemma"] {
+            let template = CString::new(name).map_err(|_| LmrsError::CStringNul)?;
+            if !template_names
+                .iter()
+                .any(|candidate| candidate.as_c_str() == template.as_c_str())
+            {
+                template_names.push(template);
+            }
         }
 
-        if written as usize > buffer.len() {
-            buffer.resize(written as usize, 0);
-            let rewritten = unsafe {
+        for template in template_names {
+            let mut buffer = vec![0u8; estimate];
+            let written = unsafe {
                 ffi::llama_chat_apply_template(
                     template.as_ptr(),
                     chat_messages.as_ptr(),
@@ -190,13 +188,37 @@ impl LlamaRuntime {
                     buffer.len() as i32,
                 )
             };
-            if rewritten < 0 {
-                return Err(LmrsError::TemplateApplyFailed);
+
+            if written >= 0 && written as usize <= buffer.len() {
+                let rendered = String::from_utf8_lossy(&buffer[..written as usize]).into_owned();
+                if !rendered.is_empty() {
+                    return Ok(rendered);
+                }
             }
-            return Ok(String::from_utf8_lossy(&buffer[..rewritten as usize]).into_owned());
+
+            if written > 0 {
+                buffer.resize(written as usize, 0);
+                let rewritten = unsafe {
+                    ffi::llama_chat_apply_template(
+                        template.as_ptr(),
+                        chat_messages.as_ptr(),
+                        chat_messages.len(),
+                        true,
+                        buffer.as_mut_ptr().cast(),
+                        buffer.len() as i32,
+                    )
+                };
+                if rewritten >= 0 && rewritten as usize <= buffer.len() {
+                    let rendered =
+                        String::from_utf8_lossy(&buffer[..rewritten as usize]).into_owned();
+                    if !rendered.is_empty() {
+                        return Ok(rendered);
+                    }
+                }
+            }
         }
 
-        Ok(String::from_utf8_lossy(&buffer[..written as usize]).into_owned())
+        Err(LmrsError::TemplateApplyFailed)
     }
 
     fn tokenize(&self, text: &str) -> Result<Vec<ffi::llama_token>, LmrsError> {
