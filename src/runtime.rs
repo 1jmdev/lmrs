@@ -98,6 +98,30 @@ impl LlamaRuntime {
         messages: &[Message],
         config: GenerationConfig,
     ) -> Result<String, LmrsError> {
+        self.generate_with_callback(messages, config, |_| {})
+    }
+
+    pub fn generate_stream<F>(
+        &self,
+        messages: &[Message],
+        config: GenerationConfig,
+        on_chunk: F,
+    ) -> Result<String, LmrsError>
+    where
+        F: FnMut(&[u8]),
+    {
+        self.generate_with_callback(messages, config, on_chunk)
+    }
+
+    fn generate_with_callback<F>(
+        &self,
+        messages: &[Message],
+        config: GenerationConfig,
+        mut on_chunk: F,
+    ) -> Result<String, LmrsError>
+    where
+        F: FnMut(&[u8]),
+    {
         let prompt = self.apply_chat_template(messages)?;
         let mut prompt_tokens = self.tokenize(&prompt)?;
         if prompt_tokens.is_empty() {
@@ -116,7 +140,9 @@ impl LlamaRuntime {
                 break;
             }
 
-            output_bytes.extend(self.token_to_piece_bytes(token)?);
+            let piece = self.token_to_piece_bytes(token)?;
+            on_chunk(&piece);
+            output_bytes.extend_from_slice(&piece);
             generated.push(token);
 
             let mut next = [token];
