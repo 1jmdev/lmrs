@@ -26,7 +26,7 @@ impl Default for LoadConfig {
     fn default() -> Self {
         let threads = default_threads();
         Self {
-            context_size: 0,
+            context_size: 131_072,
             batch_size: 2048,
             gpu_layers: -1,
             threads,
@@ -58,22 +58,69 @@ impl LlamaHandle {
         model_params.n_gpu_layers = config.gpu_layers;
 
         let model = unsafe { ffi::llama_model_load_from_file(c_path.as_ptr(), model_params) };
-        let model = NonNull::new(model).ok_or(LmrsError::ModelLoadFailed)?;
+        let model = match NonNull::new(model) {
+            Some(model) => model,
+            None => {
+                if config.gpu_layers == 0 {
+                    return Err(LmrsError::ModelLoadFailed);
+                }
+
+                model_params.n_gpu_layers = 0;
+                let cpu_model =
+                    unsafe { ffi::llama_model_load_from_file(c_path.as_ptr(), model_params) };
+                let cpu_model = NonNull::new(cpu_model).ok_or(LmrsError::ModelLoadFailed)?;
+                debug!(
+                    requested_gpu_layers = config.gpu_layers,
+                    "failed to load model with GPU offload; retried with CPU"
+                );
+                cpu_model
+            }
+        };
 
         let vocab = unsafe { ffi::llama_model_get_vocab(model.as_ptr()) };
         let vocab_size = unsafe { ffi::llama_vocab_n_tokens(vocab) as usize };
         let eos_token = unsafe { ffi::llama_vocab_eos(vocab) };
         let eot_token = unsafe { ffi::llama_vocab_eot(vocab) };
 
-        let mut ctx_params = unsafe { ffi::llama_context_default_params() };
-        ctx_params.n_ctx = config.context_size;
-        ctx_params.n_batch = config.batch_size;
-        ctx_params.n_seq_max = 1;
-        ctx_params.n_threads = config.threads;
-        ctx_params.n_threads_batch = config.threads_batch;
+        let mut ctx_sizes: SmallVec<[u32; 8]> = SmallVec::new();
+        ctx_sizes.push(config.context_size);
+        if config.context_size > 8192 {
+            let mut candidate = config.context_size / 2;
+            while candidate >= 8192 {
+                if !ctx_sizes.contains(&candidate) {
+                    ctx_sizes.push(candidate);
+                }
+                candidate /= 2;
+            }
+            if !ctx_sizes.contains(&8192) {
+                ctx_sizes.push(8192);
+            }
+        }
 
-        let ctx = unsafe { ffi::llama_init_from_model(model.as_ptr(), ctx_params) };
-        let ctx = match NonNull::new(ctx) {
+        let mut ctx = None;
+        for context_size in ctx_sizes {
+            let mut ctx_params = unsafe { ffi::llama_context_default_params() };
+            ctx_params.n_ctx = context_size;
+            ctx_params.n_batch = config.batch_size;
+            ctx_params.n_seq_max = 1;
+            ctx_params.n_threads = config.threads;
+            ctx_params.n_threads_batch = config.threads_batch;
+
+            let candidate_ctx = unsafe { ffi::llama_init_from_model(model.as_ptr(), ctx_params) };
+            if let Some(candidate_ctx) = NonNull::new(candidate_ctx) {
+                if context_size != config.context_size {
+                    debug!(
+                        requested_context_size = config.context_size,
+                        selected_context_size = context_size,
+                        "failed to initialize requested context size; using reduced context"
+                    );
+                }
+                ctx = Some(candidate_ctx);
+                break;
+            }
+        }
+
+        let ctx = match ctx {
             Some(ctx) => ctx,
             None => {
                 unsafe { ffi::llama_model_free(model.as_ptr()) };
