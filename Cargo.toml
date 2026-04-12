@@ -6,7 +6,7 @@ build = "build.rs"
 
 [dependencies]
 blake3 = "1.8.4"
-hashbrown = "0.16.1"
+hashbrown = "0.17.0"
 moka = { version = "0.12.15", features = ["sync"] }
 smallvec = "1.15.1"
 tracing = "0.1.44"
