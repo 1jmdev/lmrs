@@ -24,7 +24,7 @@ impl InferenceEngine {
         };
         let loaded = load_model(&config.model, config.revision.as_deref(), &device)?;
         let tokenizer_path = config.tokenizer.clone().unwrap_or_else(|| loaded.tokenizer_path.clone());
-        let tokenizer = TokenizerWrapper::from_file(tokenizer_path, loaded.chat_template_path)?;
+        let tokenizer = TokenizerWrapper::from_file(tokenizer_path, loaded.tokenizer_config_path, loaded.chat_template_path)?;
         let model_config = ModelConfig::from_file(&loaded.config_path)?;
         let model = LlamaModel::load(&model_config, loaded.var_builder)?;
 
