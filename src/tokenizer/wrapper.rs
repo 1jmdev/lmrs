@@ -5,7 +5,10 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokenizers::Tokenizer;
 
-use crate::{error::{AppError, Result}, server::types::ChatMessage};
+use crate::{
+    error::{AppError, Result},
+    server::types::ChatMessage,
+};
 
 #[derive(Clone)]
 pub struct TokenizerWrapper {
@@ -15,11 +18,19 @@ pub struct TokenizerWrapper {
 }
 
 impl TokenizerWrapper {
-    pub fn from_file(path: PathBuf, tokenizer_config_path: Option<PathBuf>, chat_template_path: Option<PathBuf>) -> Result<Self> {
+    pub fn from_file(
+        path: PathBuf,
+        tokenizer_config_path: Option<PathBuf>,
+        chat_template_path: Option<PathBuf>,
+    ) -> Result<Self> {
         let tokenizer = Tokenizer::from_file(path)?;
         let eos = load_eos_tokens(&tokenizer, tokenizer_config_path)?;
         let chat_template = chat_template_path.map(fs::read_to_string).transpose()?;
-        Ok(Self { tokenizer, eos, chat_template })
+        Ok(Self {
+            tokenizer,
+            eos,
+            chat_template,
+        })
     }
 
     pub fn encode(&self, text: &str) -> Result<Vec<u32>> {
@@ -31,7 +42,9 @@ impl TokenizerWrapper {
     }
 
     pub fn apply_chat_template(&self, messages: &[ChatMessage]) -> Result<String> {
-        let template = self.chat_template.as_ref().ok_or_else(|| AppError::BadRequest("model does not provide chat_template.jinja".into()))?;
+        let template = self.chat_template.as_ref().ok_or_else(|| {
+            AppError::BadRequest("model does not provide chat_template.jinja".into())
+        })?;
         let mut env = Environment::new();
         env.add_template("chat", template)?;
         Ok(env.get_template("chat")?.render(context! {
@@ -41,7 +54,9 @@ impl TokenizerWrapper {
         })?)
     }
 
-    pub fn is_eos(&self, token: u32) -> bool { self.eos.contains(&token) }
+    pub fn is_eos(&self, token: u32) -> bool {
+        self.eos.contains(&token)
+    }
 }
 
 #[derive(Deserialize)]
@@ -50,13 +65,20 @@ struct TokenizerConfig {
 }
 
 fn load_eos_tokens(tokenizer: &Tokenizer, path: Option<PathBuf>) -> Result<Vec<u32>> {
-    let Some(path) = path else { return Ok(Vec::new()); };
+    let Some(path) = path else {
+        return Ok(Vec::new());
+    };
     let config: TokenizerConfig = serde_json::from_str(&fs::read_to_string(path)?)?;
-    let Some(eos_token) = config.eos_token else { return Ok(Vec::new()); };
+    let Some(eos_token) = config.eos_token else {
+        return Ok(Vec::new());
+    };
     let mut tokens = Vec::new();
     collect_eos_tokens(&eos_token, &mut tokens);
     let vocab = tokenizer.get_vocab(true);
-    Ok(tokens.into_iter().filter_map(|token| vocab.get(&token).copied()).collect())
+    Ok(tokens
+        .into_iter()
+        .filter_map(|token| vocab.get(&token).copied())
+        .collect())
 }
 
 fn collect_eos_tokens(value: &Value, tokens: &mut Vec<String>) {
@@ -67,7 +89,9 @@ fn collect_eos_tokens(value: &Value, tokens: &mut Vec<String>) {
                 tokens.push(content.clone());
             }
         }
-        Value::Array(values) => values.iter().for_each(|value| collect_eos_tokens(value, tokens)),
+        Value::Array(values) => values
+            .iter()
+            .for_each(|value| collect_eos_tokens(value, tokens)),
         _ => {}
     }
 }

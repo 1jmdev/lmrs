@@ -1,4 +1,8 @@
-use axum::{Json, http::StatusCode, response::{IntoResponse, Response}};
+use axum::{
+    Json,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
 use serde::Serialize;
 
 #[derive(Debug, thiserror::Error)]
@@ -42,6 +46,15 @@ impl IntoResponse for AppError {
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         let message = self.to_string();
-        (status, Json(ErrorBody { error: ErrorMessage { message: &message, kind: "lmrs_error" } })).into_response()
+        (
+            status,
+            Json(ErrorBody {
+                error: ErrorMessage {
+                    message: &message,
+                    kind: "lmrs_error",
+                },
+            }),
+        )
+            .into_response()
     }
 }

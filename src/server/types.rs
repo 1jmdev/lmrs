@@ -41,13 +41,25 @@ pub struct GenerateParams {
 
 impl From<&CompletionRequest> for GenerateParams {
     fn from(req: &CompletionRequest) -> Self {
-        Self { max_tokens: req.max_tokens.unwrap_or(128), temperature: req.temperature.unwrap_or(1.0), top_p: req.top_p.unwrap_or(1.0), top_k: req.top_k, stop: req.stop.clone().unwrap_or_default() }
+        Self {
+            max_tokens: req.max_tokens.unwrap_or(128),
+            temperature: req.temperature.unwrap_or(1.0),
+            top_p: req.top_p.unwrap_or(1.0),
+            top_k: req.top_k,
+            stop: req.stop.clone().unwrap_or_default(),
+        }
     }
 }
 
 impl From<&ChatCompletionRequest> for GenerateParams {
     fn from(req: &ChatCompletionRequest) -> Self {
-        Self { max_tokens: req.max_tokens.unwrap_or(128), temperature: req.temperature.unwrap_or(1.0), top_p: req.top_p.unwrap_or(1.0), top_k: req.top_k, stop: req.stop.clone().unwrap_or_default() }
+        Self {
+            max_tokens: req.max_tokens.unwrap_or(128),
+            temperature: req.temperature.unwrap_or(1.0),
+            top_p: req.top_p.unwrap_or(1.0),
+            top_k: req.top_k,
+            stop: req.stop.clone().unwrap_or_default(),
+        }
     }
 }
 
