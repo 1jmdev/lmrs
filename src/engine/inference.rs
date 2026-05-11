@@ -5,7 +5,7 @@ use candle_core::{DType, Device, IndexOp, Tensor};
 use crate::{
     config::AppConfig,
     error::Result,
-    model::{LlamaModel, ModelConfig, load_model},
+    model::{ModelConfig, QwenModel, load_model},
     sampling::Sampler,
     server::types::{ChatMessage, GenerateParams},
     tokenizer::TokenizerWrapper,
@@ -13,7 +13,7 @@ use crate::{
 
 pub struct InferenceEngine {
     model_id: String,
-    model: Mutex<LlamaModel>,
+    model: Mutex<QwenModel>,
     tokenizer: TokenizerWrapper,
     device: Device,
 }
@@ -44,7 +44,7 @@ impl InferenceEngine {
             loaded.chat_template_path,
         )?;
         let model_config = ModelConfig::from_file(&loaded.config_path)?;
-        let model = LlamaModel::load(&model_config, loaded.var_builder)?;
+        let model = QwenModel::load(&model_config, loaded.var_builder)?;
 
         Ok(Self {
             model_id: config.model.clone(),
@@ -71,37 +71,33 @@ impl InferenceEngine {
     }
 
     pub fn generate_tokens(&self, prompt: &str, params: GenerateParams) -> Result<Vec<String>> {
-        let mut token_ids = self.tokenizer.encode(prompt)?;
+        let token_ids = self.tokenizer.encode(prompt)?;
         let prompt_len = token_ids.len();
-        let mut output = Vec::new();
+        let mut output = Vec::with_capacity(params.max_tokens);
         let mut sampler = Sampler::new(params.temperature, params.top_p, params.top_k);
+        let mut model = self.model.lock().expect("model mutex poisoned");
+        let mut next_input = 0;
 
-        {
-            let mut model = self.model.lock().expect("model mutex poisoned");
-            model.clear_kv_cache();
-        }
+        model.clear_kv_cache();
 
         for index in 0..params.max_tokens {
             let input = if index == 0 {
-                token_ids.clone()
+                Tensor::new(token_ids.as_slice(), &self.device)?
             } else {
-                vec![*token_ids.last().expect("token exists")]
+                Tensor::new(&[next_input], &self.device)?
             };
-            let input = Tensor::new(input.as_slice(), &self.device)?.unsqueeze(0)?;
-            let logits = {
-                let mut model = self.model.lock().expect("model mutex poisoned");
-                model.forward(
-                    &input,
-                    if index == 0 {
-                        0
-                    } else {
-                        prompt_len + index - 1
-                    },
-                )?
-            };
-            let logits = logits.i((0, logits.dim(1)? - 1))?.to_dtype(DType::F32)?;
+            let input = input.unsqueeze(0)?;
+            let logits = model.forward(
+                &input,
+                if index == 0 {
+                    0
+                } else {
+                    prompt_len + index - 1
+                },
+            )?;
+            let logits = last_token_logits(&logits)?.to_dtype(DType::F32)?;
             let next = sampler.sample(&logits)?;
-            token_ids.push(next);
+            next_input = next;
             if self.tokenizer.is_eos(next) {
                 break;
             }
@@ -112,6 +108,15 @@ impl InferenceEngine {
             output.push(text);
         }
         Ok(output)
+    }
+}
+
+fn last_token_logits(logits: &Tensor) -> candle_core::Result<Tensor> {
+    match logits.dims().len() {
+        1 => Ok(logits.clone()),
+        2 => logits.i(0),
+        3 => logits.i((0, logits.dim(1)? - 1)),
+        _ => logits.flatten_all(),
     }
 }
 
