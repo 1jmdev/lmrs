@@ -70,15 +70,18 @@ impl candle_core::CustomOp1 for CausalMask {
         let total_len = self.total_len as i32;
         let start_pos = self.start_pos as i32;
         let cfg = LaunchConfig {
-            grid_dim: ((elem_count as u32).div_ceil(256), 1, 1),
+            grid_dim: (
+                (self.total_len as u32).div_ceil(256),
+                self.seq_len as u32,
+                1,
+            ),
             block_dim: (256, 1, 1),
             shared_mem_bytes: 0,
         };
         let slice = match &storage.slice {
-            CudaStorageSlice::BF16(s) => {
+            CudaStorageSlice::BF16(_) => {
                 let dst = unsafe { dev.alloc::<half::bf16>(elem_count)? };
                 let mut builder = func.builder();
-                builder.arg(s);
                 builder.arg(&dst);
                 builder.arg(&seq_len);
                 builder.arg(&total_len);
@@ -178,27 +181,20 @@ pub fn gpu_argmax(logits: &Tensor) -> Result<u32> {
         .contiguous_offsets()
         .ok_or_else(|| candle_core::Error::Msg("qwen_argmax requires contiguous logits".into()))?;
 
-    let block_size = 256u32;
-    let num_blocks = ((vocab_size as u32).div_ceil(1024)).clamp(1, 256);
-    let vals = unsafe { dev.alloc::<f32>(num_blocks as usize)? };
-    let idxs = unsafe { dev.alloc::<i32>(num_blocks as usize)? };
     let out = unsafe { dev.alloc::<i32>(1)? };
-    let f1 =
-        dev.get_or_load_custom_func("qwen_argmax_bf16_phase1", MODULE_NAME, ptx::QWEN_KERNELS)?;
-    let f2 = dev.get_or_load_custom_func("qwen_argmax_phase2", MODULE_NAME, ptx::QWEN_KERNELS)?;
+    let func = dev.get_or_load_custom_func("qwen_argmax_bf16", MODULE_NAME, ptx::QWEN_KERNELS)?;
     let vocab_size_i32 = vocab_size as i32;
     match &storage.slice {
         CudaStorageSlice::BF16(s) => {
             let src = s.slice(o1..);
-            let mut builder = f1.builder();
+            let mut builder = func.builder();
             builder.arg(&src);
-            builder.arg(&vals);
-            builder.arg(&idxs);
+            builder.arg(&out);
             builder.arg(&vocab_size_i32);
             unsafe {
                 builder.launch(LaunchConfig {
-                    grid_dim: (num_blocks, 1, 1),
-                    block_dim: (block_size, 1, 1),
+                    grid_dim: (1, 1, 1),
+                    block_dim: (256, 1, 1),
                     shared_mem_bytes: 0,
                 })
             }
@@ -206,20 +202,6 @@ pub fn gpu_argmax(logits: &Tensor) -> Result<u32> {
         }
         _ => candle_core::bail!("qwen_argmax is BF16-only"),
     }
-    let num_blocks_i32 = num_blocks as i32;
-    let mut builder = f2.builder();
-    builder.arg(&vals);
-    builder.arg(&idxs);
-    builder.arg(&out);
-    builder.arg(&num_blocks_i32);
-    unsafe {
-        builder.launch(LaunchConfig {
-            grid_dim: (1, 1, 1),
-            block_dim: (256, 1, 1),
-            shared_mem_bytes: 0,
-        })
-    }
-    .w()?;
     let token = dev.clone_dtoh(&out)?;
     Ok(token[0] as u32)
 }
