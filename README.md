@@ -8,7 +8,7 @@ Rust inference server built with Axum, Candle, and Hugging Face tokenizers.
 - OpenAI-compatible `/v1/chat/completions` endpoint
 - Server-sent events for streaming responses
 - Local model directory or Hugging Face Hub model loading
-- CPU by default, with optional CUDA or Metal feature flags
+- CUDA-first runtime with cuDNN and custom CUDA kernels enabled by default
 - Greedy, top-k, and top-p sampling support
 
 ## Layout
@@ -36,30 +36,25 @@ The server can be configured with CLI flags.
 | `--model` | required |
 | `--revision` | none |
 | `--tokenizer` | model tokenizer |
-| `--device` | `auto` |
 
 ## Run
 
 ```bash
-cargo run -- --model /path/to/model
+CUDA_COMPUTE_CAP=89 cargo run --release -- --model /path/to/model
 ```
 
 For a Hugging Face Hub model:
 
 ```bash
-cargo run -- --model organization/model-name
+CUDA_COMPUTE_CAP=89 cargo run --release -- --model organization/model-name
 ```
 
-With CUDA support:
+For other NVIDIA GPUs, set the matching CUDA architecture before building:
 
 ```bash
-cargo run --features cuda -- --model /path/to/model --device cuda
-```
-
-With Metal support:
-
-```bash
-cargo run --features metal -- --model /path/to/model --device metal
+CUDA_COMPUTE_CAP=80 cargo build --release   # A100
+CUDA_COMPUTE_CAP=89 cargo build --release   # RTX 4060
+CUDA_COMPUTE_CAP=100 cargo build --release  # B200, CUDA 12.8+ recommended
 ```
 
 ## API
