@@ -1,5 +1,5 @@
 pub mod config;
-mod kernels;
+pub mod kernels;
 pub mod loader;
 pub mod model;
 pub mod models;

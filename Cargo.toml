@@ -3,18 +3,12 @@ name = "lmrs"
 version = "0.1.0"
 edition = "2024"
 
-[features]
-default = []
-cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda", "dep:bindgen_cuda"]
-cudnn = ["cuda", "candle-core/cudnn"]
-metal = ["candle-core/metal", "candle-nn/metal", "candle-transformers/metal"]
-
 [dependencies]
 anyhow = "1.0.102"
 axum = { version = "0.8.9", features = ["macros"] }
-candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.10.2" }
-candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.10.2" }
-candle-transformers = { git = "https://github.com/huggingface/candle.git", version = "0.10.2" }
+candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.10.2", features = ["cuda"] }
+candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.10.2", features = ["cuda"] }
+candle-transformers = { git = "https://github.com/huggingface/candle.git", version = "0.10.2", features = ["cuda"] }
 clap = { version = "4.6.1", features = ["derive", "env"] }
 futures = "0.3.32"
 half = "2.7.1"
@@ -32,4 +26,4 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
 uuid = { version = "1.23.1", features = ["v4"] }
 
 [build-dependencies]
-bindgen_cuda = { version = "0.1.6", optional = true }
+bindgen_cuda = "0.1.6"

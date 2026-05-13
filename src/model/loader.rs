@@ -35,7 +35,7 @@ pub fn load_model(model: &str, revision: Option<&str>, device: &Device) -> Resul
     let weights = repo
         .get("model.safetensors")
         .or_else(|_| repo.get("pytorch_model.bin"))?;
-    let vb = unsafe { VarBuilder::from_mmaped_safetensors(&[weights], DType::F16, device)? };
+    let vb = unsafe { VarBuilder::from_mmaped_safetensors(&[weights], DType::BF16, device)? };
     Ok(LoadedModel {
         config_path,
         tokenizer_path,
@@ -58,7 +58,7 @@ fn load_from_dir(root: &Path, device: &Device) -> Result<LoadedModel> {
         )));
     }
     fs::metadata(&weights)?;
-    let vb = unsafe { VarBuilder::from_mmaped_safetensors(&[weights], DType::F16, device)? };
+    let vb = unsafe { VarBuilder::from_mmaped_safetensors(&[weights], DType::BF16, device)? };
     Ok(LoadedModel {
         config_path,
         tokenizer_path,

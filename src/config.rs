@@ -15,8 +15,6 @@ pub struct AppConfig {
     pub revision: Option<String>,
     #[arg(long, env = "VLLM_RS_TOKENIZER")]
     pub tokenizer: Option<PathBuf>,
-    #[arg(long, env = "VLLM_RS_DEVICE", default_value = "auto")]
-    pub device: String,
 }
 
 impl AppConfig {

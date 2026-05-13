@@ -66,20 +66,14 @@ impl RotaryEmbedding {
         let positions = Tensor::new(positions.as_slice(), device)?;
         let freqs = positions.unsqueeze(1)?.matmul(&inv.unsqueeze(0)?)?;
         Ok(Self {
-            cos: freqs.cos()?.contiguous()?,
-            sin: freqs.sin()?.contiguous()?,
+            cos: freqs.cos()?.to_dtype(DType::BF16)?.contiguous()?,
+            sin: freqs.sin()?.to_dtype(DType::BF16)?.contiguous()?,
         })
     }
 
-    fn get(
-        &self,
-        total_len: usize,
-        start_pos: usize,
-        seq_len: usize,
-        dtype: DType,
-    ) -> Result<(Tensor, Tensor)> {
-        let cos = self.cos.narrow(0, start_pos, seq_len)?.to_dtype(dtype)?;
-        let sin = self.sin.narrow(0, start_pos, seq_len)?.to_dtype(dtype)?;
+    fn get(&self, total_len: usize, start_pos: usize, seq_len: usize) -> Result<(Tensor, Tensor)> {
+        let cos = self.cos.narrow(0, start_pos, seq_len)?;
+        let sin = self.sin.narrow(0, start_pos, seq_len)?;
         if total_len > self.cos.dim(0)? {
             candle_core::bail!("sequence length {total_len} exceeds max_position_embeddings");
         }
@@ -88,11 +82,8 @@ impl RotaryEmbedding {
 }
 
 struct Attention {
-    q_proj: Linear,
-    k_proj: Linear,
-    v_proj: Linear,
     o_proj: Linear,
-    qkv_proj: Option<Linear>,
+    qkv_proj: Linear,
     q_norm: Option<RmsNorm>,
     k_norm: Option<RmsNorm>,
     num_heads: usize,
@@ -144,11 +135,8 @@ impl Attention {
             (None, None)
         };
         Ok(Self {
-            q_proj,
-            k_proj,
-            v_proj,
             o_proj,
-            qkv_proj: Some(Linear::new(qkv_w, qkv_b)),
+            qkv_proj: Linear::new(qkv_w, qkv_b),
             q_norm,
             k_norm,
             num_heads,
@@ -212,20 +200,10 @@ impl Attention {
         mask: Option<&Tensor>,
     ) -> Result<Tensor> {
         let (b_sz, seq_len, _) = x.dims3()?;
-        let (q, k, v) = if let Some(qkv_proj) = &self.qkv_proj {
-            let qkv = qkv_proj.forward(x)?;
-            (
-                qkv.narrow(D::Minus1, 0, self.q_dim)?,
-                qkv.narrow(D::Minus1, self.q_dim, self.kv_dim)?,
-                qkv.narrow(D::Minus1, self.q_dim + self.kv_dim, self.kv_dim)?,
-            )
-        } else {
-            (
-                self.q_proj.forward(x)?,
-                self.k_proj.forward(x)?,
-                self.v_proj.forward(x)?,
-            )
-        };
+        let qkv = self.qkv_proj.forward(x)?;
+        let q = qkv.narrow(D::Minus1, 0, self.q_dim)?;
+        let k = qkv.narrow(D::Minus1, self.q_dim, self.kv_dim)?;
+        let v = qkv.narrow(D::Minus1, self.q_dim + self.kv_dim, self.kv_dim)?;
         let q = q
             .reshape((b_sz, seq_len, self.num_heads, self.head_dim))?
             .transpose(1, 2)?;
@@ -388,12 +366,16 @@ pub struct ModelForCausalLM {
     norm: RmsNorm,
     lm_head: Linear,
     rotary: RotaryEmbedding,
-    dtype: DType,
 }
 
 impl ModelForCausalLM {
     pub fn new(config: &Config, vb: VarBuilder) -> Result<Self> {
-        let dtype = vb.dtype();
+        if !vb.device().is_cuda() {
+            candle_core::bail!("qwen3 is CUDA-only");
+        }
+        if vb.dtype() != DType::BF16 {
+            candle_core::bail!("qwen3 is BF16-only");
+        }
         let model_vb = vb.pp("model");
         let embed_tokens = candle_nn::embedding(
             config.vocab_size,
@@ -419,33 +401,26 @@ impl ModelForCausalLM {
             norm,
             lm_head,
             rotary,
-            dtype,
         })
     }
 
     pub fn forward(&mut self, input_ids: &Tensor, start_pos: usize) -> Result<Tensor> {
-        #[cfg(feature = "cuda")]
+        if !input_ids.device().is_cuda() {
+            candle_core::bail!("qwen3 forward requires CUDA input ids");
+        }
         let _guard = EventTrackingGuard::disable(input_ids.device());
 
         let (_b_sz, seq_len) = input_ids.dims2()?;
         let total_len = start_pos + seq_len;
-        let (cos, sin) = self.rotary.get(total_len, start_pos, seq_len, self.dtype)?;
-        let mut x = self.embed_tokens.forward(input_ids)?.to_dtype(self.dtype)?;
+        let (cos, sin) = self.rotary.get(total_len, start_pos, seq_len)?;
+        let mut x = self.embed_tokens.forward(input_ids)?;
         let mask = if seq_len > 1 {
-            let mut data = vec![0f32; seq_len * total_len];
-            for i in 0..seq_len {
-                for j in 0..total_len {
-                    if j > start_pos + i {
-                        data[i * total_len + j] = f32::NEG_INFINITY;
-                    }
-                }
-            }
-            Some(
-                Tensor::from_vec(data, (seq_len, total_len), input_ids.device())?
-                    .to_dtype(self.dtype)?
-                    .unsqueeze(0)?
-                    .unsqueeze(0)?,
-            )
+            Some(kernels::causal_mask(
+                seq_len,
+                total_len,
+                start_pos,
+                input_ids.device(),
+            )?)
         } else {
             None
         };
@@ -463,10 +438,8 @@ impl ModelForCausalLM {
     }
 }
 
-#[cfg(feature = "cuda")]
 struct EventTrackingGuard;
 
-#[cfg(feature = "cuda")]
 impl EventTrackingGuard {
     fn disable(device: &Device) -> Self {
         if let Device::Cuda(dev) = device {

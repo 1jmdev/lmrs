@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use candle_core::{DType, Device, IndexOp, Tensor};
+use candle_core::{Device, IndexOp, Tensor};
 
 use crate::{
     config::AppConfig,
@@ -20,19 +20,7 @@ pub struct InferenceEngine {
 
 impl InferenceEngine {
     pub fn load(config: &AppConfig) -> Result<Self> {
-        let device = match config.device.as_str() {
-            "cpu" => Device::Cpu,
-            #[cfg(feature = "cuda")]
-            "cuda" => Device::new_cuda(0)?,
-            #[cfg(feature = "metal")]
-            "metal" => Device::new_metal(0)?,
-            "auto" => default_device()?,
-            other => {
-                return Err(crate::error::AppError::BadRequest(format!(
-                    "unsupported device: {other}"
-                )));
-            }
-        };
+        let device = Device::new_cuda(0)?;
         let loaded = load_model(&config.model, config.revision.as_deref(), &device)?;
         let tokenizer_path = config
             .tokenizer
@@ -95,7 +83,7 @@ impl InferenceEngine {
                     prompt_len + index - 1
                 },
             )?;
-            let logits = last_token_logits(&logits)?.to_dtype(DType::F32)?;
+            let logits = last_token_logits(&logits)?;
             let next = sampler.sample(&logits)?;
             next_input = next;
             if self.tokenizer.is_eos(next) {
@@ -117,20 +105,5 @@ fn last_token_logits(logits: &Tensor) -> candle_core::Result<Tensor> {
         2 => logits.i(0),
         3 => logits.i((0, logits.dim(1)? - 1)),
         _ => logits.flatten_all(),
-    }
-}
-
-fn default_device() -> candle_core::Result<Device> {
-    #[cfg(feature = "cuda")]
-    {
-        return Device::new_cuda(0);
-    }
-    #[cfg(all(not(feature = "cuda"), feature = "metal"))]
-    {
-        return Device::new_metal(0);
-    }
-    #[cfg(all(not(feature = "cuda"), not(feature = "metal")))]
-    {
-        Ok(Device::Cpu)
     }
 }
