@@ -18,6 +18,11 @@ pub struct InferenceEngine {
     device: Device,
 }
 
+pub struct GeneratedText {
+    pub text: String,
+    pub tokens: usize,
+}
+
 impl InferenceEngine {
     pub fn load(config: &AppConfig) -> Result<Self> {
         let device = Device::new_cuda(0)?;
@@ -47,15 +52,29 @@ impl InferenceEngine {
     }
 
     pub fn count_tokens(&self, text: &str) -> Result<usize> {
-        Ok(self.tokenizer.encode(text)?.len())
+        self.tokenizer.count_text_tokens(text)
+    }
+
+    pub fn count_message_tokens(&self, messages: &[ChatMessage]) -> Result<usize> {
+        messages.iter().try_fold(0, |total, message| {
+            Ok(total + self.tokenizer.count_text_tokens(&message.content)?)
+        })
     }
 
     pub fn apply_chat_template(&self, messages: &[ChatMessage]) -> Result<String> {
         self.tokenizer.apply_chat_template(messages)
     }
 
-    pub fn generate(&self, prompt: &str, params: GenerateParams) -> Result<String> {
-        Ok(self.generate_tokens(prompt, params)?.concat())
+    pub fn generate_with_usage(
+        &self,
+        prompt: &str,
+        params: GenerateParams,
+    ) -> Result<GeneratedText> {
+        let tokens = self.generate_tokens(prompt, params)?;
+        Ok(GeneratedText {
+            text: tokens.concat(),
+            tokens: tokens.len(),
+        })
     }
 
     pub fn generate_tokens(&self, prompt: &str, params: GenerateParams) -> Result<Vec<String>> {
@@ -92,6 +111,9 @@ impl InferenceEngine {
             let text = self.tokenizer.decode(&[next])?;
             if params.stop.iter().any(|stop| text.contains(stop)) {
                 break;
+            }
+            if text.is_empty() {
+                continue;
             }
             output.push(text);
         }

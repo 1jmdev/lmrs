@@ -37,6 +37,10 @@ impl TokenizerWrapper {
         Ok(self.tokenizer.encode(text, true)?.get_ids().to_vec())
     }
 
+    pub fn count_text_tokens(&self, text: &str) -> Result<usize> {
+        Ok(self.tokenizer.encode(text, false)?.len())
+    }
+
     pub fn decode(&self, tokens: &[u32]) -> Result<String> {
         Ok(self.tokenizer.decode(tokens, true)?)
     }

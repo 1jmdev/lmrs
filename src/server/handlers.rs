@@ -33,9 +33,9 @@ pub async fn completions(
     if req.stream.unwrap_or(false) {
         return Ok(stream_completion(engine, req.prompt, params).into_response());
     }
-    let output = engine.generate(&req.prompt, params)?;
+    let output = engine.generate_with_usage(&req.prompt, params)?;
     let prompt_tokens = engine.count_tokens(&req.prompt)?;
-    let completion_tokens = engine.count_tokens(&output)?;
+    let completion_tokens = output.tokens;
     Ok(Json(CompletionResponse {
         id: format!("cmpl-{}", Uuid::new_v4()),
         object: "text_completion".into(),
@@ -43,7 +43,7 @@ pub async fn completions(
         model: response_model,
         choices: vec![CompletionChoice {
             index: 0,
-            text: output,
+            text: output.text,
             finish_reason: "stop".into(),
         }],
         usage: Usage {
@@ -59,6 +59,7 @@ pub async fn chat_completions(
     State(engine): State<Arc<InferenceEngine>>,
     Json(req): Json<ChatCompletionRequest>,
 ) -> Result<impl IntoResponse> {
+    let prompt_tokens = engine.count_message_tokens(&req.messages)?;
     let prompt = engine.apply_chat_template(&req.messages)?;
     let params = GenerateParams::from(&req);
     let response_model = req
@@ -68,9 +69,8 @@ pub async fn chat_completions(
     if req.stream.unwrap_or(false) {
         return Ok(stream_chat_completion(engine, prompt, params).into_response());
     }
-    let output = engine.generate(&prompt, params)?;
-    let prompt_tokens = engine.count_tokens(&prompt)?;
-    let completion_tokens = engine.count_tokens(&output)?;
+    let output = engine.generate_with_usage(&prompt, params)?;
+    let completion_tokens = output.tokens;
     Ok(Json(ChatCompletionResponse {
         id: format!("chatcmpl-{}", Uuid::new_v4()),
         object: "chat.completion".into(),
@@ -80,7 +80,7 @@ pub async fn chat_completions(
             index: 0,
             message: ChatMessage {
                 role: "assistant".into(),
-                content: output,
+                content: output.text,
             },
             finish_reason: "stop".into(),
         }],
