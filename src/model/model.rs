@@ -1,8 +1,9 @@
 use candle_core::Tensor;
 use candle_nn::VarBuilder;
-use candle_transformers::models::{qwen3, qwen3_moe};
+use candle_transformers::models::qwen3_moe;
 
 use super::ModelConfig;
+use super::models::qwen3;
 use crate::error::AppError;
 
 enum InnerQwenModel {

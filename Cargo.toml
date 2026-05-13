@@ -5,7 +5,7 @@ edition = "2024"
 
 [features]
 default = []
-cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda"]
+cuda = ["candle-core/cuda", "candle-nn/cuda", "candle-transformers/cuda", "dep:bindgen_cuda"]
 cudnn = ["cuda", "candle-core/cudnn"]
 metal = ["candle-core/metal", "candle-nn/metal", "candle-transformers/metal"]
 
@@ -17,6 +17,7 @@ candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.10
 candle-transformers = { git = "https://github.com/huggingface/candle.git", version = "0.10.2" }
 clap = { version = "4.6.1", features = ["derive", "env"] }
 futures = "0.3.32"
+half = "2.7.1"
 hf-hub = { version = "0.5.0", features = ["tokio"] }
 minijinja = "2.19.0"
 serde = { version = "1.0.228", features = ["derive"] }
@@ -29,3 +30,6 @@ tower-http = { version = "0.6.10", features = ["cors", "trace", "timeout"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
 uuid = { version = "1.23.1", features = ["v4"] }
+
+[build-dependencies]
+bindgen_cuda = { version = "0.1.6", optional = true }
