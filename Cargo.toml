@@ -27,9 +27,3 @@ uuid = { version = "1.23.1", features = ["v4"] }
 
 [build-dependencies]
 bindgen_cuda = "0.1.6"
-
-[profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1
-panic = "abort"
