@@ -81,7 +81,13 @@ impl DecoderLayer {
         })
     }
 
-    pub fn forward(&mut self, x: &Tensor, cos: &Tensor, sin: &Tensor, causal: bool) -> Result<Tensor> {
+    pub fn forward(
+        &mut self,
+        x: &Tensor,
+        cos: &Tensor,
+        sin: &Tensor,
+        causal: bool,
+    ) -> Result<Tensor> {
         let residual = x;
         let y = self.input_layernorm.forward(x)?;
         let y = self.self_attn.forward(&y, cos, sin, causal)?;

@@ -27,7 +27,12 @@ impl RotaryEmbedding {
         })
     }
 
-    pub fn get(&self, total_len: usize, start_pos: usize, seq_len: usize) -> Result<(Tensor, Tensor)> {
+    pub fn get(
+        &self,
+        total_len: usize,
+        start_pos: usize,
+        seq_len: usize,
+    ) -> Result<(Tensor, Tensor)> {
         let cos = self.cos.narrow(0, start_pos, seq_len)?;
         let sin = self.sin.narrow(0, start_pos, seq_len)?;
         if total_len > self.cos.dim(0)? {
