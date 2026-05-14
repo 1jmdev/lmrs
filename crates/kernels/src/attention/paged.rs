@@ -1,10 +1,8 @@
+use crate::ptx;
 use candle_core::backend::BackendStorage;
 use candle_core::cuda_backend::cudarc::driver::{LaunchConfig, PushKernelArg};
 use candle_core::cuda_backend::{CudaStorage, CudaStorageSlice, WrapErr};
 use candle_core::{CpuStorage, DType, Device, Layout, Result, Shape, Tensor};
-use runtime::cuda_alloc;
-
-use crate::ptx;
 
 const MODULE_NAME: &str = "lmrs_attention_paged";
 
@@ -75,7 +73,7 @@ impl candle_core::CustomOp1 for CausalMask {
         };
         let slice = match &storage.slice {
             CudaStorageSlice::BF16(_) => {
-                let dst = unsafe { cuda_alloc::<half::bf16>(dev, elem_count)? };
+                let dst = unsafe { dev.alloc::<half::bf16>(elem_count)? };
                 let mut builder = func.builder();
                 builder.arg(&dst);
                 builder.arg(&seq_len);

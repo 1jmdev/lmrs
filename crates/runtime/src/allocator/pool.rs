@@ -1,7 +1,6 @@
-use candle_core::Result;
-use candle_core::cuda_backend::WrapErr;
 use cudarc::driver::{CudaSlice, DeviceRepr};
 
+use crate::Result;
 use crate::device::CudaContext;
 
 /// Allocates CUDA memory for one context.
@@ -14,7 +13,7 @@ use crate::device::CudaContext;
 /// ```no_run
 /// use runtime::{CudaContext, MemoryPool};
 ///
-/// # fn main() -> candle_core::Result<()> {
+/// # fn main() -> runtime::Result<()> {
 /// let context = CudaContext::new(0)?;
 /// let pool = MemoryPool::new(context);
 /// let slice = unsafe { pool.alloc::<f32>(16)? };
@@ -36,7 +35,7 @@ impl MemoryPool {
     /// ```no_run
     /// use runtime::{CudaContext, MemoryPool};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let pool = MemoryPool::new(context);
     ///
@@ -55,7 +54,7 @@ impl MemoryPool {
     /// ```no_run
     /// use runtime::{CudaContext, MemoryPool};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let pool = MemoryPool::new(CudaContext::new(0)?);
     /// let slice = unsafe { pool.alloc::<u8>(256)? };
     ///
@@ -70,7 +69,7 @@ impl MemoryPool {
     /// before it is read by device or host code.
     pub unsafe fn alloc<T: DeviceRepr>(&self, len: usize) -> Result<CudaSlice<T>> {
         let stream = self.context.cudarc().default_stream();
-        unsafe { stream.alloc::<T>(len) }.w()
+        Ok(unsafe { stream.alloc::<T>(len) }?)
     }
 
     /// Returns the CUDA context used by this pool.
@@ -80,7 +79,7 @@ impl MemoryPool {
     /// ```no_run
     /// use runtime::{CudaContext, MemoryPool};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let pool = MemoryPool::new(CudaContext::new(0)?);
     /// assert_eq!(pool.context().ordinal(), 0);
     /// # Ok(())

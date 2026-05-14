@@ -1,4 +1,5 @@
-use candle_core::Result;
+use crate::Result;
+use crate::RuntimeError;
 
 use super::GraphExec;
 
@@ -45,7 +46,7 @@ impl GraphUpdate {
     /// ```no_run
     /// use runtime::{CudaContext, GraphCapture, GraphExec, GraphUpdate};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let graph = GraphCapture::begin(&context)?.end()?;
     /// let result = GraphExec::instantiate(graph).and_then(|mut exec| GraphUpdate::new().apply(&mut exec));
@@ -54,7 +55,7 @@ impl GraphUpdate {
     /// # }
     /// ```
     pub fn apply(&self, _exec: &mut GraphExec) -> Result<()> {
-        candle_core::bail!("CUDA graph updates are unavailable")
+        Err(RuntimeError::msg("CUDA graph updates are unavailable"))
     }
 }
 

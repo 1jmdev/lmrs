@@ -2,7 +2,6 @@ use candle_core::backend::BackendStorage;
 use candle_core::cuda_backend::cudarc::driver::{LaunchConfig, PushKernelArg};
 use candle_core::cuda_backend::{CudaStorage, CudaStorageSlice, WrapErr};
 use candle_core::{CpuStorage, DType, Layout, Result, Shape, Tensor};
-use runtime::cuda_alloc;
 
 use crate::ptx;
 
@@ -65,7 +64,7 @@ impl candle_core::CustomOp1 for FusedSiluMul {
         let slice = match &storage.slice {
             CudaStorageSlice::BF16(s) => {
                 let src = s.slice(o1..o2);
-                let dst = unsafe { cuda_alloc::<half::bf16>(dev, out_el)? };
+                let dst = unsafe { dev.alloc::<half::bf16>(out_el)? };
                 let mut builder = func.builder();
                 builder.arg(&src);
                 builder.arg(&dst);

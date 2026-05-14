@@ -1,6 +1,6 @@
 use super::{CudaStream, StreamPriority};
+use crate::Result;
 use crate::device::CudaContext;
-use candle_core::Result;
 
 /// Fixed-size collection of CUDA streams for one context.
 ///
@@ -13,7 +13,7 @@ use candle_core::Result;
 /// ```no_run
 /// use runtime::{CudaContext, StreamPool, StreamPriority};
 ///
-/// # fn main() -> candle_core::Result<()> {
+/// # fn main() -> runtime::Result<()> {
 /// let context = CudaContext::new(0)?;
 /// let pool = StreamPool::new(&context, 4, StreamPriority::Normal)?;
 /// assert_eq!(pool.len(), 4);
@@ -29,7 +29,7 @@ impl StreamPool {
     /// Creates `size` streams for `context`.
     ///
     /// Stream creation can fail if CUDA cannot allocate a stream handle, so the
-    /// constructor returns Candle's `Result` and leaves the caller with either a
+    /// constructor returns runtime's `Result` and leaves the caller with either a
     /// fully-built pool or no pool at all.
     ///
     /// # Example
@@ -37,7 +37,7 @@ impl StreamPool {
     /// ```no_run
     /// use runtime::{CudaContext, StreamPool, StreamPriority};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let pool = StreamPool::new(&context, 2, StreamPriority::High)?;
     /// assert!(pool.streams().iter().all(|s| s.priority() == StreamPriority::High));
@@ -61,7 +61,7 @@ impl StreamPool {
     /// ```no_run
     /// use runtime::{CudaContext, StreamPool, StreamPriority};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let pool = StreamPool::new(&context, 1, StreamPriority::Normal)?;
     /// assert_eq!(pool.streams().len(), 1);
@@ -82,7 +82,7 @@ impl StreamPool {
     /// ```no_run
     /// use runtime::{CudaContext, StreamPool, StreamPriority};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let pool = StreamPool::new(&context, 3, StreamPriority::Low)?;
     /// assert_eq!(pool.len(), 3);
@@ -103,7 +103,7 @@ impl StreamPool {
     /// ```no_run
     /// use runtime::{CudaContext, StreamPool, StreamPriority};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let pool = StreamPool::new(&context, 0, StreamPriority::Normal)?;
     /// assert!(pool.is_empty());

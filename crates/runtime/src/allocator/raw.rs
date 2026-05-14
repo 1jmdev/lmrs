@@ -1,6 +1,7 @@
-use candle_core::Result;
-use candle_core::cuda_backend::CudaDevice;
 use cudarc::driver::{CudaSlice, DeviceRepr};
+
+use crate::Result;
+use crate::device::CudaContext;
 
 /// Allocates uninitialized CUDA device memory on the provided device.
 ///
@@ -10,13 +11,11 @@ use cudarc::driver::{CudaSlice, DeviceRepr};
 /// # Example
 ///
 /// ```no_run
-/// use candle_core::Device;
-/// use runtime::cuda_alloc;
+/// use runtime::{CudaContext, cuda_alloc};
 ///
-/// # fn main() -> candle_core::Result<()> {
-/// let device = Device::new_cuda(0)?;
-/// let cuda = device.as_cuda_device()?;
-/// let slice = unsafe { cuda_alloc::<f32>(cuda, 1024)? };
+/// # fn main() -> runtime::Result<()> {
+/// let context = CudaContext::new(0)?;
+/// let slice = unsafe { cuda_alloc::<f32>(&context, 1024)? };
 ///
 /// assert_eq!(slice.len(), 1024);
 /// # Ok(())
@@ -27,8 +26,8 @@ use cudarc::driver::{CudaSlice, DeviceRepr};
 ///
 /// The returned device memory is uninitialized. Callers must write every element
 /// before any kernel or D2H transfer reads from it.
-pub unsafe fn cuda_alloc<T: DeviceRepr>(device: &CudaDevice, len: usize) -> Result<CudaSlice<T>> {
-    unsafe { device.alloc::<T>(len) }
+pub unsafe fn cuda_alloc<T: DeviceRepr>(context: &CudaContext, len: usize) -> Result<CudaSlice<T>> {
+    Ok(unsafe { context.cudarc().default_stream().alloc::<T>(len) }?)
 }
 
 /// Copies a CUDA allocation into a host `Vec`.
@@ -39,22 +38,20 @@ pub unsafe fn cuda_alloc<T: DeviceRepr>(device: &CudaDevice, len: usize) -> Resu
 /// # Example
 ///
 /// ```no_run
-/// use candle_core::Device;
-/// use runtime::{clone_dtoh, cuda_alloc};
+/// use runtime::{CudaContext, clone_dtoh, cuda_alloc};
 ///
-/// # fn main() -> candle_core::Result<()> {
-/// let device = Device::new_cuda(0)?;
-/// let cuda = device.as_cuda_device()?;
-/// let slice = unsafe { cuda_alloc::<f32>(cuda, 4)? };
-/// let host = clone_dtoh(cuda, &slice)?;
+/// # fn main() -> runtime::Result<()> {
+/// let context = CudaContext::new(0)?;
+/// let slice = unsafe { cuda_alloc::<f32>(&context, 4)? };
+/// let host = clone_dtoh(&context, &slice)?;
 ///
 /// assert_eq!(host.len(), 4);
 /// # Ok(())
 /// # }
 /// ```
 pub fn clone_dtoh<T: DeviceRepr + Default + Clone>(
-    device: &CudaDevice,
+    context: &CudaContext,
     slice: &CudaSlice<T>,
 ) -> Result<Vec<T>> {
-    device.clone_dtoh(slice)
+    Ok(context.cudarc().default_stream().clone_dtoh(slice)?)
 }

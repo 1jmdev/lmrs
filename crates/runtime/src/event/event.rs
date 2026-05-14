@@ -1,10 +1,9 @@
 use std::fmt;
 
-use candle_core::Result;
-use candle_core::cuda_backend::WrapErr;
 use cudarc::driver::result;
 use cudarc::driver::sys;
 
+use crate::Result;
 use crate::device::CudaContext;
 use crate::stream::CudaStream;
 
@@ -19,7 +18,7 @@ use crate::stream::CudaStream;
 /// ```no_run
 /// use runtime::{CudaContext, CudaEvent};
 ///
-/// # fn main() -> candle_core::Result<()> {
+/// # fn main() -> runtime::Result<()> {
 /// let context = CudaContext::new(0)?;
 /// let event = CudaEvent::new()?;
 /// event.record_default(&context)?;
@@ -43,13 +42,13 @@ impl CudaEvent {
     /// ```no_run
     /// use runtime::CudaEvent;
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let _event = CudaEvent::new()?;
     /// # Ok(())
     /// # }
     /// ```
     pub fn new() -> Result<Self> {
-        let raw = result::event::create(sys::CUevent_flags::CU_EVENT_DEFAULT).w()?;
+        let raw = result::event::create(sys::CUevent_flags::CU_EVENT_DEFAULT)?;
         Ok(Self { raw })
     }
 
@@ -64,7 +63,7 @@ impl CudaEvent {
     /// ```no_run
     /// use runtime::{CudaContext, CudaEvent};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let event = CudaEvent::new()?;
     /// event.record_default(&context)?;
@@ -73,7 +72,8 @@ impl CudaEvent {
     /// ```
     pub fn record_default(&self, context: &CudaContext) -> Result<()> {
         let stream = context.cudarc().default_stream();
-        unsafe { result::event::record(self.raw, stream.cu_stream()) }.w()
+        unsafe { result::event::record(self.raw, stream.cu_stream()) }?;
+        Ok(())
     }
 
     /// Records this event on a runtime-owned non-default stream.
@@ -86,7 +86,7 @@ impl CudaEvent {
     /// ```no_run
     /// use runtime::{CudaContext, CudaEvent, CudaStream, StreamPriority};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let stream = CudaStream::new(&context, StreamPriority::Normal)?;
     /// let event = CudaEvent::new()?;
@@ -95,7 +95,8 @@ impl CudaEvent {
     /// # }
     /// ```
     pub fn record_on(&self, stream: &CudaStream) -> Result<()> {
-        unsafe { result::event::record(self.raw, stream.inner().cu_stream()) }.w()
+        unsafe { result::event::record(self.raw, stream.inner().cu_stream()) }?;
+        Ok(())
     }
 
     /// Blocks the host until this event has completed.
@@ -109,7 +110,7 @@ impl CudaEvent {
     /// ```no_run
     /// use runtime::{CudaContext, CudaEvent};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let event = CudaEvent::new()?;
     /// event.record_default(&context)?;
@@ -118,7 +119,8 @@ impl CudaEvent {
     /// # }
     /// ```
     pub fn synchronize(&self) -> Result<()> {
-        unsafe { result::event::synchronize(self.raw) }.w()
+        unsafe { result::event::synchronize(self.raw) }?;
+        Ok(())
     }
 
     /// Returns the raw CUDA event handle for low-level runtime modules.

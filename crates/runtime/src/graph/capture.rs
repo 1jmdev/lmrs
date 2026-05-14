@@ -1,5 +1,4 @@
-use candle_core::Result;
-
+use crate::Result;
 use crate::device::CudaContext;
 
 /// In-progress CUDA graph capture descriptor.
@@ -12,7 +11,7 @@ use crate::device::CudaContext;
 /// ```no_run
 /// use runtime::{CudaContext, GraphCapture};
 ///
-/// # fn main() -> candle_core::Result<()> {
+/// # fn main() -> runtime::Result<()> {
 /// let context = CudaContext::new(0)?;
 /// let capture = GraphCapture::begin(&context)?;
 /// let graph = capture.end()?;
@@ -35,7 +34,7 @@ impl GraphCapture {
     /// ```no_run
     /// use runtime::{CudaContext, GraphCapture};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let capture = GraphCapture::begin(&context)?;
     /// assert_eq!(capture.device_ordinal(), 0);
@@ -58,7 +57,7 @@ impl GraphCapture {
     /// ```no_run
     /// use runtime::{CudaContext, GraphCapture};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let graph = GraphCapture::begin(&context)?.end()?;
     /// assert_eq!(graph.device_ordinal(), context.ordinal());
@@ -78,7 +77,7 @@ impl GraphCapture {
     /// ```no_run
     /// use runtime::{CudaContext, GraphCapture};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let capture = GraphCapture::begin(&context)?;
     /// assert_eq!(capture.device_ordinal(), 0);
@@ -97,7 +96,7 @@ impl GraphCapture {
 /// ```no_run
 /// use runtime::{CudaContext, GraphCapture};
 ///
-/// # fn main() -> candle_core::Result<()> {
+/// # fn main() -> runtime::Result<()> {
 /// let context = CudaContext::new(0)?;
 /// let graph = GraphCapture::begin(&context)?.end()?;
 /// assert_eq!(graph.device_ordinal(), 0);
@@ -117,7 +116,7 @@ impl CapturedGraph {
     /// ```no_run
     /// use runtime::{CudaContext, GraphCapture};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let graph = GraphCapture::begin(&context)?.end()?;
     /// assert_eq!(graph.device_ordinal(), 0);

@@ -2417,7 +2417,6 @@ dependencies = [
 name = "runtime"
 version = "0.1.0"
 dependencies = [
- "candle-core",
  "cudarc 0.19.6",
  "half",
  "thiserror 2.0.18",

@@ -1,8 +1,9 @@
-use candle_core::Result;
-use candle_core::cuda_backend::WrapErr;
 use cudarc::driver::CudaContext as CudarcContext;
 
+use crate::RuntimeError;
+
 use super::CudaContext;
+use crate::Result;
 
 /// Selects a CUDA device by visible ordinal.
 ///
@@ -55,7 +56,7 @@ impl DeviceSelector {
     /// ```no_run
     /// use runtime::DeviceSelector;
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = DeviceSelector::new(0).select()?;
     /// assert_eq!(context.ordinal(), 0);
     /// # Ok(())
@@ -73,18 +74,18 @@ impl DeviceSelector {
     /// ```no_run
     /// use runtime::DeviceSelector;
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// DeviceSelector::new(0).validate()?;
     /// # Ok(())
     /// # }
     /// ```
     pub fn validate(&self) -> Result<()> {
-        let count = CudarcContext::device_count().w()? as usize;
+        let count = CudarcContext::device_count()? as usize;
         if self.ordinal >= count {
-            candle_core::bail!(
+            return Err(RuntimeError::msg(format!(
                 "CUDA device ordinal {} is out of range; {count} device(s) visible",
                 self.ordinal
-            );
+            )));
         }
         Ok(())
     }

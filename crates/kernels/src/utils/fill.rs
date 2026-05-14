@@ -1,7 +1,6 @@
 use candle_core::cuda_backend::cudarc::driver::{LaunchConfig, PushKernelArg};
 use candle_core::cuda_backend::{CudaStorageSlice, WrapErr};
 use candle_core::{DType, Device, Result, Tensor};
-use runtime::cuda_alloc;
 
 use crate::ptx;
 
@@ -27,7 +26,7 @@ pub fn gpu_argmax(logits: &Tensor) -> Result<u32> {
         .contiguous_offsets()
         .ok_or_else(|| candle_core::Error::Msg("gpu_argmax requires contiguous logits".into()))?;
 
-    let out = unsafe { cuda_alloc::<i32>(dev, 1)? };
+    let out = unsafe { dev.alloc::<i32>(1)? };
     let func = dev.get_or_load_custom_func("generic_argmax_bf16", MODULE_NAME, ptx::UTILS_FILL)?;
     let vocab_size_i32 = vocab_size as i32;
     match &storage.slice {

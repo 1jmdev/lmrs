@@ -1,10 +1,9 @@
 use std::fmt;
 use std::sync::Arc;
 
-use candle_core::Result;
-use candle_core::cuda_backend::WrapErr;
 use cudarc::driver::CudaStream as CudarcStream;
 
+use crate::Result;
 use crate::device::CudaContext;
 
 /// Scheduling priority requested for a CUDA stream.
@@ -30,7 +29,7 @@ pub enum StreamPriority {
 /// ```no_run
 /// use runtime::{CudaContext, CudaStream, StreamPriority};
 ///
-/// # fn main() -> candle_core::Result<()> {
+/// # fn main() -> runtime::Result<()> {
 /// let context = CudaContext::new(0)?;
 /// let stream = CudaStream::new(&context, StreamPriority::Normal)?;
 /// stream.synchronize()?;
@@ -52,7 +51,7 @@ impl CudaStream {
     /// ```no_run
     /// use runtime::{CudaContext, CudaStream, StreamPriority};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let stream = CudaStream::new(&context, StreamPriority::High)?;
     /// assert_eq!(stream.priority(), StreamPriority::High);
@@ -60,7 +59,7 @@ impl CudaStream {
     /// # }
     /// ```
     pub fn new(context: &CudaContext, priority: StreamPriority) -> Result<Self> {
-        let inner = context.cudarc().new_stream().w()?;
+        let inner = context.cudarc().new_stream()?;
         Ok(Self { inner, priority })
     }
 
@@ -74,7 +73,7 @@ impl CudaStream {
     /// ```no_run
     /// use runtime::{CudaContext, CudaStream, StreamPriority};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let stream = CudaStream::new(&context, StreamPriority::Low)?;
     /// assert_eq!(stream.priority(), StreamPriority::Low);
@@ -96,7 +95,7 @@ impl CudaStream {
     /// ```no_run
     /// use runtime::{CudaContext, CudaStream, StreamPriority};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let stream = CudaStream::new(&context, StreamPriority::Normal)?;
     /// stream.synchronize()?;
@@ -104,7 +103,8 @@ impl CudaStream {
     /// # }
     /// ```
     pub fn synchronize(&self) -> Result<()> {
-        self.inner.synchronize().w()
+        self.inner.synchronize()?;
+        Ok(())
     }
 
     /// Exposes the raw cudarc stream for low-level runtime modules.

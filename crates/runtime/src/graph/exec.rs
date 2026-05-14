@@ -1,4 +1,5 @@
-use candle_core::Result;
+use crate::Result;
+use crate::RuntimeError;
 
 use super::CapturedGraph;
 
@@ -11,7 +12,7 @@ use super::CapturedGraph;
 /// ```no_run
 /// use runtime::{CudaContext, GraphCapture, GraphExec};
 ///
-/// # fn main() -> candle_core::Result<()> {
+/// # fn main() -> runtime::Result<()> {
 /// let context = CudaContext::new(0)?;
 /// let graph = GraphCapture::begin(&context)?.end()?;
 /// let result = GraphExec::instantiate(graph);
@@ -35,7 +36,7 @@ impl GraphExec {
     /// ```no_run
     /// use runtime::{CudaContext, GraphCapture, GraphExec};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let graph = GraphCapture::begin(&context)?.end()?;
     /// let exec = GraphExec::instantiate(graph)?;
@@ -59,7 +60,7 @@ impl GraphExec {
     /// ```no_run
     /// use runtime::{CudaContext, GraphCapture, GraphExec};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let graph = GraphCapture::begin(&context)?.end()?;
     /// let result = GraphExec::instantiate(graph).and_then(|exec| exec.launch());
@@ -69,7 +70,7 @@ impl GraphExec {
     /// ```
     pub fn launch(&self) -> Result<()> {
         let _device_ordinal = self.device_ordinal;
-        candle_core::bail!("CUDA graph execution is unavailable")
+        Err(RuntimeError::msg("CUDA graph execution is unavailable"))
     }
 
     /// Returns the CUDA ordinal associated with this executable graph metadata.
@@ -79,7 +80,7 @@ impl GraphExec {
     /// ```no_run
     /// use runtime::{CudaContext, GraphCapture, GraphExec};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let graph = GraphCapture::begin(&context)?.end()?;
     /// let exec = GraphExec::instantiate(graph)?;

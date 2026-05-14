@@ -1,6 +1,6 @@
-use candle_core::Result;
-use candle_core::cuda_backend::WrapErr;
 use cudarc::driver::sys::CUdevice_attribute_enum;
+
+use crate::Result;
 
 use super::CudaContext;
 
@@ -46,7 +46,7 @@ impl DeviceProps {
     /// ```no_run
     /// use runtime::{CudaContext, DeviceProps};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let props = DeviceProps::query(&context)?;
     /// assert!(props.sm_count > 0);
@@ -55,17 +55,15 @@ impl DeviceProps {
     /// ```
     pub fn query(context: &CudaContext) -> Result<Self> {
         let device = context.cudarc();
-        let name = device.name().w()?;
+        let name = device.name()?;
         let sm_count = device
-            .attribute(CUdevice_attribute_enum::CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT)
-            .w()? as usize;
+            .attribute(CUdevice_attribute_enum::CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT)?
+            as usize;
         let compute_capability_major = device
-            .attribute(CUdevice_attribute_enum::CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR)
-            .w()?;
+            .attribute(CUdevice_attribute_enum::CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR)?;
         let compute_capability_minor = device
-            .attribute(CUdevice_attribute_enum::CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR)
-            .w()?;
-        let total_memory_bytes = device.total_mem().w()?;
+            .attribute(CUdevice_attribute_enum::CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR)?;
+        let total_memory_bytes = device.total_mem()?;
 
         Ok(Self {
             ordinal: device.ordinal(),

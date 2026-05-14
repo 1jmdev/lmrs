@@ -1,6 +1,6 @@
-use candle_core::Result;
-use candle_core::cuda_backend::WrapErr;
 use cudarc::driver::result;
+
+use crate::Result;
 
 use super::CudaEvent;
 
@@ -15,7 +15,7 @@ use super::CudaEvent;
 /// ```no_run
 /// use runtime::{CudaContext, CudaEvent, EventTimer};
 ///
-/// # fn main() -> candle_core::Result<()> {
+/// # fn main() -> runtime::Result<()> {
 /// let context = CudaContext::new(0)?;
 /// let start = CudaEvent::new()?;
 /// let end = CudaEvent::new()?;
@@ -41,7 +41,7 @@ impl EventTimer {
     /// ```no_run
     /// use runtime::{CudaContext, CudaEvent, EventTimer};
     ///
-    /// # fn main() -> candle_core::Result<()> {
+    /// # fn main() -> runtime::Result<()> {
     /// let context = CudaContext::new(0)?;
     /// let start = CudaEvent::new()?;
     /// let end = CudaEvent::new()?;
@@ -54,6 +54,6 @@ impl EventTimer {
     /// # }
     /// ```
     pub fn elapsed_ms(start: &CudaEvent, end: &CudaEvent) -> Result<f32> {
-        unsafe { result::event::elapsed(start.raw(), end.raw()) }.w()
+        Ok(unsafe { result::event::elapsed(start.raw(), end.raw()) }?)
     }
 }
