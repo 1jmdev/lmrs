@@ -5,7 +5,7 @@ members = [
     "crates/tensor",
     "crates/ops",
     "crates/model",
-    #"crates/cache",
+    "crates/cache",
     #"crates/engine",
     #"crates/sampling",
     #"crates/tokenizer",
@@ -17,6 +17,7 @@ resolver = "2"
 runtime ={ path = "crates/runtime" }
 kernels ={ path = "crates/kernels" }
 tensor ={ path = "crates/tensor" }
+cache ={ path = "crates/cache" }
 ops ={ path = "crates/ops" }
 anyhow = "1.0.102"
 axum = { version = "0.8.9", features = ["macros"] }
