@@ -2,6 +2,7 @@ use candle_core::backend::BackendStorage;
 use candle_core::cuda_backend::cudarc::driver::{LaunchConfig, PushKernelArg};
 use candle_core::cuda_backend::{CudaStorage, CudaStorageSlice, WrapErr};
 use candle_core::{CpuStorage, DType, Device, Layout, Result, Shape, Tensor};
+use runtime::cuda_alloc;
 
 use super::{GENERIC_MODULE_NAME, ptx};
 
@@ -68,7 +69,7 @@ impl candle_core::CustomOp1 for CausalMask {
         };
         let slice = match &storage.slice {
             CudaStorageSlice::BF16(_) => {
-                let dst = unsafe { dev.alloc::<half::bf16>(elem_count)? };
+                let dst = unsafe { cuda_alloc::<half::bf16>(dev, elem_count)? };
                 let mut builder = func.builder();
                 builder.arg(&dst);
                 builder.arg(&seq_len);
@@ -108,7 +109,7 @@ pub fn gpu_argmax(logits: &Tensor) -> Result<u32> {
         .contiguous_offsets()
         .ok_or_else(|| candle_core::Error::Msg("gpu_argmax requires contiguous logits".into()))?;
 
-    let out = unsafe { dev.alloc::<i32>(1)? };
+    let out = unsafe { cuda_alloc::<i32>(dev, 1)? };
     let func = dev.get_or_load_custom_func(
         "generic_argmax_bf16",
         GENERIC_MODULE_NAME,

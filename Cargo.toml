@@ -1,15 +1,26 @@
-[package]
-name = "lmrs"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+members = [
+    "crates/runtime",
+    #"crates/kernels",
+    #"crates/tensor",
+    #"crates/ops",
+    #"crates/model",
+    #"crates/cache",
+    #"crates/engine",
+    #"crates/sampling",
+    #"crates/tokenizer",
+    #"crates/server",
+]
+resolver = "2"
 
-[dependencies]
+[workspace.dependencies]
+runtime ={ path = "crates/runtime" }
 anyhow = "1.0.102"
 axum = { version = "0.8.9", features = ["macros"] }
 candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.10.2", features = ["cuda", "cudnn"] }
 candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.10.2", features = ["cuda", "cudnn"] }
-candle-transformers = { git = "https://github.com/huggingface/candle.git", version = "0.10.2", features = ["cuda", "cudnn"] }
 clap = { version = "4.6.1", features = ["derive", "env"] }
+cudarc = { version = "0.19.6", features = ["cuda-12080"] }
 futures = "0.3.32"
 half = "2.7.1"
 hf-hub = { version = "0.5.0", features = ["tokio"] }
@@ -24,6 +35,3 @@ tower-http = { version = "0.6.10", features = ["cors", "trace", "timeout"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
 uuid = { version = "1.23.1", features = ["v4"] }
-
-[build-dependencies]
-bindgen_cuda = "0.1.6"
