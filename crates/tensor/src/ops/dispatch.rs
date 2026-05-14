@@ -58,8 +58,14 @@ impl KernelDispatch {
         let src_bytes = src.len_bytes();
         let dst_bytes = dst.len_bytes();
         if src_bytes != dst_bytes {
-            return Err(DispatchError::ByteLengthMismatch { src_bytes, dst_bytes });
+            return Err(DispatchError::ByteLengthMismatch {
+                src_bytes,
+                dst_bytes,
+            });
         }
-        Ok(CopyPlan { kernel: CopyKernel::BlocksU8, launch: CopyBlocksLaunch::new(src_bytes, 1) })
+        Ok(CopyPlan {
+            kernel: CopyKernel::BlocksU8,
+            launch: CopyBlocksLaunch::new(src_bytes, 1),
+        })
     }
 }

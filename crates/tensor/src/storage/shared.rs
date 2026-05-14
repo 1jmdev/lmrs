@@ -29,7 +29,9 @@ pub struct SharedStorage {
 impl SharedStorage {
     /// Wraps a CUDA buffer in shared storage.
     pub fn new(buffer: CudaBuf) -> Self {
-        Self { inner: Arc::new(buffer) }
+        Self {
+            inner: Arc::new(buffer),
+        }
     }
 
     /// Returns the backing buffer size in bytes.

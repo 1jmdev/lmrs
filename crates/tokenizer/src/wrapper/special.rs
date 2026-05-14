@@ -100,10 +100,7 @@ mod tests {
         );
         let dir = tempfile::tempdir()?;
         let path = dir.path().join("tokenizer_config.json");
-        fs::write(
-            &path,
-            r#"{"eos_token":["</s>",{"content":"<|end|>"}]}"#,
-        )?;
+        fs::write(&path, r#"{"eos_token":["</s>",{"content":"<|end|>"}]}"#)?;
         let specials = SpecialTokens::from_config_file(&tokenizer, &path)?;
         assert_eq!(specials.eos(), &[2, 3]);
         Ok(())

@@ -28,11 +28,7 @@ pub fn gpu_argmax(logits: &Tensor) -> Result<u32> {
         .ok_or_else(|| candle_core::Error::Msg("gpu_argmax requires contiguous logits".into()))?;
 
     let out = unsafe { cuda_alloc::<i32>(dev, 1)? };
-    let func = dev.get_or_load_custom_func(
-        "generic_argmax_bf16",
-        MODULE_NAME,
-        ptx::UTILS_FILL,
-    )?;
+    let func = dev.get_or_load_custom_func("generic_argmax_bf16", MODULE_NAME, ptx::UTILS_FILL)?;
     let vocab_size_i32 = vocab_size as i32;
     match &storage.slice {
         CudaStorageSlice::BF16(s) => {

@@ -18,7 +18,9 @@ pub struct DecodeOptions {
 impl DecodeOptions {
     /// Creates decoding options.
     pub fn new(skip_special_tokens: bool) -> Self {
-        Self { skip_special_tokens }
+        Self {
+            skip_special_tokens,
+        }
     }
 
     /// Creates options that preserve special tokens in decoded text.
@@ -66,7 +68,9 @@ impl TokenizerWrapper {
         tokens: &[u32],
         options: DecodeOptions,
     ) -> crate::Result<String> {
-        Ok(self.tokenizer().decode(tokens, options.skip_special_tokens())?)
+        Ok(self
+            .tokenizer()
+            .decode(tokens, options.skip_special_tokens())?)
     }
 
     /// Decodes tokens on Tokio's blocking pool.

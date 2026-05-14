@@ -24,6 +24,10 @@ pub struct FlashMhaLaunch {
 impl FlashMhaLaunch {
     /// Creates launch metadata for one CUDA block per query row.
     pub fn new(rows: usize, seq_len: usize, head_dim: usize) -> Self {
-        Self { rows, seq_len, head_dim }
+        Self {
+            rows,
+            seq_len,
+            head_dim,
+        }
     }
 }

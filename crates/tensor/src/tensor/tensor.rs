@@ -35,12 +35,27 @@ impl Tensor {
         let len_bytes = shape.numel() * dtype.size_in_bytes();
         let storage = SharedStorage::new(CudaBuf::new(device, len_bytes)?);
         let stride = Stride::contiguous(&shape);
-        Ok(Self { shape, stride, storage, dtype })
+        Ok(Self {
+            shape,
+            stride,
+            storage,
+            dtype,
+        })
     }
 
     /// Builds a tensor from existing shared storage and explicit metadata.
-    pub fn from_storage(storage: SharedStorage, shape: Shape, stride: Stride, dtype: DType) -> Self {
-        Self { shape, stride, storage, dtype }
+    pub fn from_storage(
+        storage: SharedStorage,
+        shape: Shape,
+        stride: Stride,
+        dtype: DType,
+    ) -> Self {
+        Self {
+            shape,
+            stride,
+            storage,
+            dtype,
+        }
     }
 
     /// Returns tensor shape.

@@ -18,6 +18,10 @@ pub struct MlaLaunch {
 impl MlaLaunch {
     /// Creates shape metadata for the MLA forward projection.
     pub fn new(rows: usize, latent_dim: usize, out_dim: usize) -> Self {
-        Self { rows, latent_dim, out_dim }
+        Self {
+            rows,
+            latent_dim,
+            out_dim,
+        }
     }
 }

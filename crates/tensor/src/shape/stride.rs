@@ -37,7 +37,10 @@ impl Stride {
     pub fn new(shape: &Shape, strides: impl Into<Vec<usize>>) -> Result<Self, ShapeError> {
         let strides = strides.into();
         if strides.len() != shape.ndim() {
-            return Err(ShapeError::RankMismatch { shape_rank: shape.ndim(), stride_rank: strides.len() });
+            return Err(ShapeError::RankMismatch {
+                shape_rank: shape.ndim(),
+                stride_rank: strides.len(),
+            });
         }
         Ok(Self { strides })
     }

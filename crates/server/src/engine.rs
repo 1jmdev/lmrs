@@ -125,7 +125,10 @@ impl ServerEngine {
             .generate(&input_ids, config, |token| self.tokenizer.is_eos(token))?;
         let tokens = output.tokens();
         let text = self.tokenizer.decode(output.token_ids())?;
-        Ok(GeneratedText::new(trim_at_stop(text, params.stop()), tokens))
+        Ok(GeneratedText::new(
+            trim_at_stop(text, params.stop()),
+            tokens,
+        ))
     }
 }
 

@@ -71,7 +71,11 @@ pub struct AutoModelForCausalLM {
 
 impl AutoModelForCausalLM {
     /// Loads a model id or local directory and routes to the correct architecture.
-    pub fn load(model: &str, revision: Option<&str>, device: &Device) -> anyhow::Result<AutoLoadedModel> {
+    pub fn load(
+        model: &str,
+        revision: Option<&str>,
+        device: &Device,
+    ) -> anyhow::Result<AutoLoadedModel> {
         let loaded = load_model(model, revision, device)?;
         Self::from_loaded(loaded)
     }

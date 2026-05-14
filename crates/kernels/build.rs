@@ -5,30 +5,72 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const CUDA_SOURCES: &[(&str, &str)] = &[
-    ("ATTENTION_PAGED_ATTN_FWD", "../../kernels/attention/paged_attn_fwd.cu"),
-    ("ATTENTION_PAGED_ATTN_BWD", "../../kernels/attention/paged_attn_bwd.cu"),
-    ("ATTENTION_FLASH_MHA_FWD", "../../kernels/attention/flash_mha_fwd.cu"),
-    ("ATTENTION_FLASH_MHA_BWD", "../../kernels/attention/flash_mha_bwd.cu"),
+    (
+        "ATTENTION_PAGED_ATTN_FWD",
+        "../../kernels/attention/paged_attn_fwd.cu",
+    ),
+    (
+        "ATTENTION_PAGED_ATTN_BWD",
+        "../../kernels/attention/paged_attn_bwd.cu",
+    ),
+    (
+        "ATTENTION_FLASH_MHA_FWD",
+        "../../kernels/attention/flash_mha_fwd.cu",
+    ),
+    (
+        "ATTENTION_FLASH_MHA_BWD",
+        "../../kernels/attention/flash_mha_bwd.cu",
+    ),
     ("ATTENTION_MLA_FWD", "../../kernels/attention/mla_fwd.cu"),
     ("ATTENTION_SOFTMAX", "../../kernels/attention/softmax.cu"),
-    ("GEMM_BF16_GEMM_SM89", "../../kernels/gemm/bf16_gemm_sm89.cu"),
-    ("GEMM_BF16_GEMM_SM100", "../../kernels/gemm/bf16_gemm_sm100.cu"),
-    ("GEMM_FP8_GEMM_SM100", "../../kernels/gemm/fp8_gemm_sm100.cu"),
-    ("GEMM_INT8_GEMM_SM89", "../../kernels/gemm/int8_gemm_sm89.cu"),
+    (
+        "GEMM_BF16_GEMM_SM89",
+        "../../kernels/gemm/bf16_gemm_sm89.cu",
+    ),
+    (
+        "GEMM_BF16_GEMM_SM100",
+        "../../kernels/gemm/bf16_gemm_sm100.cu",
+    ),
+    (
+        "GEMM_FP8_GEMM_SM100",
+        "../../kernels/gemm/fp8_gemm_sm100.cu",
+    ),
+    (
+        "GEMM_INT8_GEMM_SM89",
+        "../../kernels/gemm/int8_gemm_sm89.cu",
+    ),
     ("GEMM_SPLITK_GEMM", "../../kernels/gemm/splitk_gemm.cu"),
     ("NORM_RMS_NORM_FWD", "../../kernels/norm/rms_norm_fwd.cu"),
     ("NORM_RMS_NORM_BWD", "../../kernels/norm/rms_norm_bwd.cu"),
     ("NORM_LAYER_NORM", "../../kernels/norm/layer_norm.cu"),
-    ("ACTIVATION_FUSED_SILU_MUL", "../../kernels/activation/fused_silu_mul.cu"),
-    ("ACTIVATION_FUSED_GELU_MUL", "../../kernels/activation/fused_gelu_mul.cu"),
-    ("ACTIVATION_ACT_QUANT", "../../kernels/activation/act_quant.cu"),
-    ("POS_EMBED_ROTARY_FWD", "../../kernels/pos_embed/rotary_fwd.cu"),
-    ("POS_EMBED_ROTARY_INPLACE", "../../kernels/pos_embed/rotary_inplace.cu"),
+    (
+        "ACTIVATION_FUSED_SILU_MUL",
+        "../../kernels/activation/fused_silu_mul.cu",
+    ),
+    (
+        "ACTIVATION_FUSED_GELU_MUL",
+        "../../kernels/activation/fused_gelu_mul.cu",
+    ),
+    (
+        "ACTIVATION_ACT_QUANT",
+        "../../kernels/activation/act_quant.cu",
+    ),
+    (
+        "POS_EMBED_ROTARY_FWD",
+        "../../kernels/pos_embed/rotary_fwd.cu",
+    ),
+    (
+        "POS_EMBED_ROTARY_INPLACE",
+        "../../kernels/pos_embed/rotary_inplace.cu",
+    ),
     ("QUANT_AWQ_GEMM", "../../kernels/quant/awq_gemm.cu"),
     ("QUANT_FP8_CAST", "../../kernels/quant/fp8_cast.cu"),
     ("QUANT_INT8_CAST", "../../kernels/quant/int8_cast.cu"),
     ("UTILS_COPY_BLOCKS", "../../kernels/utils/copy_blocks.cu"),
-    ("UTILS_GATHER_SCATTER", "../../kernels/utils/gather_scatter.cu"),
+    (
+        "UTILS_GATHER_SCATTER",
+        "../../kernels/utils/gather_scatter.cu",
+    ),
     ("UTILS_FILL", "../../kernels/utils/fill.cu"),
 ];
 
@@ -36,7 +78,8 @@ fn main() {
     println!("cargo::rerun-if-changed=build.rs");
     println!("cargo::rerun-if-changed=../../kernels");
 
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set"));
+    let manifest_dir =
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set"));
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR is set"));
     let ptx_dir = out_dir.join("ptx");
     let fatbin_dir = out_dir.join("fatbin");

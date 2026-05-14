@@ -10,7 +10,11 @@ use crate::{CudaBuf, DType, Shape, SharedStorage, Stride, Tensor};
 pub enum CopyError {
     /// Host element type does not match the tensor dtype size.
     #[error("host element size {host_size} does not match dtype {dtype} size {dtype_size}")]
-    ElementSizeMismatch { host_size: usize, dtype: DType, dtype_size: usize },
+    ElementSizeMismatch {
+        host_size: usize,
+        dtype: DType,
+        dtype_size: usize,
+    },
     /// Host element count does not match tensor element count.
     #[error("host length {host_len} does not match tensor elements {tensor_len}")]
     LengthMismatch { host_len: usize, tensor_len: usize },
@@ -87,10 +91,23 @@ fn validate_parts<T>(dtype: DType, tensor_len: usize, len: usize) -> Result<()> 
     let host_size = std::mem::size_of::<T>();
     let dtype_size = dtype.size_in_bytes();
     if host_size != dtype_size {
-        bail!("{}", CopyError::ElementSizeMismatch { host_size, dtype, dtype_size });
+        bail!(
+            "{}",
+            CopyError::ElementSizeMismatch {
+                host_size,
+                dtype,
+                dtype_size
+            }
+        );
     }
     if len != tensor_len {
-        bail!("{}", CopyError::LengthMismatch { host_len: len, tensor_len });
+        bail!(
+            "{}",
+            CopyError::LengthMismatch {
+                host_len: len,
+                tensor_len
+            }
+        );
     }
     Ok(())
 }

@@ -82,7 +82,10 @@ impl TokenizerRegistry {
 
     /// Inserts an already constructed tokenizer.
     pub async fn insert(&self, model_id: impl Into<String>, tokenizer: TokenizerWrapper) {
-        self.tokenizers.write().await.insert(model_id.into(), tokenizer);
+        self.tokenizers
+            .write()
+            .await
+            .insert(model_id.into(), tokenizer);
     }
 
     /// Returns the number of cached tokenizers.
@@ -125,10 +128,20 @@ mod tests {
 
         let registry = TokenizerRegistry::new();
         let first = registry
-            .load("tiny", &path, None::<&std::path::Path>, None::<&std::path::Path>)
+            .load(
+                "tiny",
+                &path,
+                None::<&std::path::Path>,
+                None::<&std::path::Path>,
+            )
             .await?;
         let second = registry
-            .load("tiny", &path, None::<&std::path::Path>, None::<&std::path::Path>)
+            .load(
+                "tiny",
+                &path,
+                None::<&std::path::Path>,
+                None::<&std::path::Path>,
+            )
             .await?;
         assert_eq!(first.encode("hello")?, second.encode("hello")?);
         assert_eq!(registry.len().await, 1);

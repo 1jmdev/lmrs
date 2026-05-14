@@ -8,7 +8,10 @@ pub enum ShapeError {
     NumelOverflow,
     /// A requested stride does not match shape rank.
     #[error("stride rank {stride_rank} does not match shape rank {shape_rank}")]
-    RankMismatch { shape_rank: usize, stride_rank: usize },
+    RankMismatch {
+        shape_rank: usize,
+        stride_rank: usize,
+    },
 }
 
 /// Tensor extents in row-major dimension order.
@@ -53,7 +56,10 @@ impl Shape {
     /// assert_eq!(Shape::scalar().numel(), 1);
     /// ```
     pub fn scalar() -> Self {
-        Self { dims: Vec::new(), numel: 1 }
+        Self {
+            dims: Vec::new(),
+            numel: 1,
+        }
     }
 
     /// Returns the number of dimensions.

@@ -45,7 +45,10 @@ impl SamplingStrategy for TopP {
             candle_core::bail!("cannot sample from empty logits")
         }
         let max = sorted[0].1;
-        let denom: f64 = sorted.iter().map(|(_, logit)| f64::from(*logit - max).exp()).sum();
+        let denom: f64 = sorted
+            .iter()
+            .map(|(_, logit)| f64::from(*logit - max).exp())
+            .sum();
         let mut acc = 0.0;
         let mut keep = 0;
         for (_, logit) in &sorted {

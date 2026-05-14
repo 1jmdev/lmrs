@@ -16,6 +16,9 @@ pub struct FusedGeluMulLaunch {
 impl FusedGeluMulLaunch {
     /// Creates launch metadata for a fused GELU multiply pass.
     pub fn new(rows: usize, intermediate_size: usize) -> Self {
-        Self { rows, intermediate_size }
+        Self {
+            rows,
+            intermediate_size,
+        }
     }
 }

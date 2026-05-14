@@ -25,6 +25,9 @@ pub struct CopyBlocksLaunch {
 impl CopyBlocksLaunch {
     /// Creates block copy metadata.
     pub fn new(block_bytes: usize, blocks: usize) -> Self {
-        Self { block_bytes, blocks }
+        Self {
+            block_bytes,
+            blocks,
+        }
     }
 }
