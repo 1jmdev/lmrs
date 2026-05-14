@@ -21,6 +21,11 @@ impl LmHead {
         }
     }
 
+    /// Wraps an existing linear projection.
+    pub fn from_linear(inner: Linear) -> Self {
+        Self { inner }
+    }
+
     /// Projects hidden states to logits.
     pub fn forward(&self, hidden: &Tensor) -> Result<Tensor> {
         self.inner.forward(hidden)

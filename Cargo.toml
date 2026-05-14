@@ -4,7 +4,7 @@ members = [
     "crates/kernels",
     "crates/tensor",
     "crates/ops",
-    #"crates/model",
+    "crates/model",
     #"crates/cache",
     #"crates/engine",
     #"crates/sampling",
@@ -17,6 +17,7 @@ resolver = "2"
 runtime ={ path = "crates/runtime" }
 kernels ={ path = "crates/kernels" }
 tensor ={ path = "crates/tensor" }
+ops ={ path = "crates/ops" }
 anyhow = "1.0.102"
 axum = { version = "0.8.9", features = ["macros"] }
 candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.10.2", features = ["cuda", "cudnn"] }
@@ -29,6 +30,7 @@ hf-hub = { version = "0.5.0", features = ["tokio"] }
 minijinja = "2.19.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
+safetensors = "0.7.0"
 thiserror = "2.0.18"
 tokenizers = { version = "0.23.1", default-features = false, features = ["onig"] }
 tokio = { version = "1.52.3", features = ["full"] }
