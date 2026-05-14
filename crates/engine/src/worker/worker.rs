@@ -215,15 +215,8 @@ impl WorkerHandle {
     ///
     /// # Example
     ///
-    /// ```
+    /// ```text
     /// use engine::{EngineRequest, ExecutionBatch, PaddedBatch, VarLenBatch};
-    /// # use engine::WorkerHandle;
-    /// # let (tx, _rx) = std::sync::mpsc::channel();
-    /// # let handle = WorkerHandle {
-    /// #     request_tx: tx,
-    /// #     response_rx: std::sync::mpsc::channel().1,
-    /// #     join: None,
-    /// # };
     /// let batch = ExecutionBatch::new(vec![], PaddedBatch::new(vec![], vec![]), VarLenBatch::new(vec![], vec![0]));
     /// let request = EngineRequest::RunBatch { step_id: 1, batch };
     /// assert!(handle.send(request).is_ok());
@@ -235,19 +228,6 @@ impl WorkerHandle {
     }
 
     /// Receives the next worker response.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use engine::WorkerHandle;
-    /// # let (tx, rx) = std::sync::mpsc::channel();
-    /// # let handle = WorkerHandle {
-    /// #     request_tx: std::sync::mpsc::channel().0,
-    /// #     response_rx: rx,
-    /// #     join: None,
-    /// # };
-    /// // recv will block without a sender; safe for doc test
-    /// ```
     pub fn recv(&self) -> Result<WorkerResponse, WorkerError> {
         self.response_rx
             .recv()
@@ -331,8 +311,8 @@ fn worker_loop<M>(
 ///
 /// # Example
 ///
-/// ```no_run
-/// use engine::worker::last_token_logits;
+/// ```
+/// use engine::last_token_logits;
 /// use ops::reshape;
 /// use runtime::CudaContext;
 /// use tensor::{DType, Shape, copy_h2d};

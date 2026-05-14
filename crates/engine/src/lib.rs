@@ -12,4 +12,4 @@ pub use executor::{EngineExecutor, ExecutorError, GraphCaptureState, GraphReplay
 pub use generation::{GenerationConfig, GenerationEngine, GenerationOutput, TokenizerAssets};
 pub use scheduler::{SchedulePolicy, ScheduleResult, Scheduler, SchedulerBudget};
 pub use sequence::{FinishReason, Sequence, SequenceError, SequenceGroup, SequenceStatus};
-pub use worker::{EngineRequest, Worker, WorkerError, WorkerHandle, WorkerResponse};
+pub use worker::{EngineRequest, Worker, WorkerError, WorkerHandle, WorkerResponse, last_token_logits};
