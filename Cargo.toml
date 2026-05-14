@@ -6,7 +6,7 @@ members = [
     "crates/ops",
     "crates/model",
     "crates/cache",
-    #"crates/engine",
+    "crates/engine",
     "crates/sampling",
     "crates/tokenizer",
     #"crates/server",
@@ -18,6 +18,7 @@ runtime ={ path = "crates/runtime" }
 kernels ={ path = "crates/kernels" }
 tensor ={ path = "crates/tensor" }
 cache ={ path = "crates/cache" }
+model ={ path = "crates/model" }
 ops ={ path = "crates/ops" }
 sampling ={ path = "crates/sampling" }
 tokenizer ={ path = "crates/tokenizer" }
