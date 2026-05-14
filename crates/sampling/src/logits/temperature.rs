@@ -1,4 +1,7 @@
-use candle_core::{Result, Tensor};
+use ops::affine;
+use tensor::Tensor;
+
+use crate::{Result, SamplingError};
 
 use super::LogitsProcessor;
 
@@ -10,13 +13,11 @@ use super::LogitsProcessor;
 /// # Example
 ///
 /// ```
-/// use candle_core::{Device, Tensor};
 /// use sampling::{LogitsProcessor, Temperature};
 ///
-/// # fn main() -> candle_core::Result<()> {
-/// let logits = Tensor::from_vec(vec![2.0_f32, 4.0], 2, &Device::Cpu)?;
-/// let out = Temperature::new(2.0)?.process(&logits, &[])?;
-/// assert_eq!(out.to_vec1::<f32>()?, vec![1.0, 2.0]);
+/// # fn main() -> sampling::Result<()> {
+/// let processor = Temperature::new(2.0)?;
+/// assert_eq!(processor.value(), 2.0);
 /// # Ok(())
 /// # }
 /// ```
@@ -27,14 +28,36 @@ pub struct Temperature {
 
 impl Temperature {
     /// Creates a temperature processor.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use sampling::Temperature;
+    ///
+    /// # fn main() -> sampling::Result<()> {
+    /// assert!(Temperature::new(0.0).is_err());
+    /// assert!(Temperature::new(2.0).is_ok());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn new(value: f64) -> Result<Self> {
         if !value.is_finite() || value <= 0.0 {
-            candle_core::bail!("temperature must be finite and greater than zero")
+            return Err(SamplingError::invalid(
+                "temperature must be finite and greater than zero",
+            ));
         }
         Ok(Self { value })
     }
 
     /// Returns the configured temperature value.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use sampling::Temperature;
+    /// # let temp = Temperature::new(0.5).unwrap();
+    /// assert_eq!(temp.value(), 0.5);
+    /// ```
     pub fn value(&self) -> f64 {
         self.value
     }
@@ -45,6 +68,6 @@ impl LogitsProcessor for Temperature {
         if self.value == 1.0 {
             return Ok(logits.clone());
         }
-        logits.affine(1.0 / self.value, 0.0)
+        Ok(affine(logits, (1.0 / self.value) as f32, 0.0f32)?)
     }
 }

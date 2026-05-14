@@ -27,7 +27,6 @@ engine ={ path = "crates/engine" }
 server ={ path = "crates/server" }
 anyhow = "1.0.102"
 axum = "0.8.9"
-candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.10.2", features = ["cuda"] }
 clap = { version = "4.6.1", features = ["derive", "env"] }
 cudarc = { version = "0.19.6", features = ["cuda-12080"] }
 futures = "0.3.32"

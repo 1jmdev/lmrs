@@ -1,8 +1,10 @@
 use std::{path::PathBuf, sync::Mutex};
 
-use candle_core::{Device, Tensor};
 use model::AutoModelForCausalLM;
+use ops::reshape;
+use runtime::CudaContext;
 use sampling::{Greedy, Sampler, SamplerConfig, Temperature, TopK, TopP};
+use tensor::{DType, Shape, copy_h2d};
 
 /// Paths for tokenizer assets resolved while loading the generation engine.
 ///
@@ -173,11 +175,12 @@ impl GenerationOutput {
 /// # Example
 ///
 /// ```no_run
-/// use candle_core::Device;
 /// use engine::{GenerationConfig, GenerationEngine};
+/// use runtime::CudaContext;
 ///
 /// # fn main() -> anyhow::Result<()> {
-/// let engine = GenerationEngine::load("Qwen/Qwen3-0.6B", None, Device::new_cuda(0)?)?;
+/// let context = CudaContext::new(0)?;
+/// let engine = GenerationEngine::load("Qwen/Qwen3-0.6B", None, context)?;
 /// let output = engine.generate(&[1, 2, 3], GenerationConfig::default(), |token| token == 2)?;
 /// assert!(output.tokens() <= 128);
 /// # Ok(())
@@ -186,28 +189,52 @@ impl GenerationOutput {
 pub struct GenerationEngine {
     model_id: String,
     model: Mutex<AutoModelForCausalLM>,
-    device: Device,
+    context: CudaContext,
     tokenizer_assets: TokenizerAssets,
 }
 
 impl GenerationEngine {
     /// Loads a model on CUDA device 0.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use engine::GenerationEngine;
+    ///
+    /// # fn main() -> anyhow::Result<()> {
+    /// let engine = GenerationEngine::load_cuda0("Qwen/Qwen3-0.6B", None)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn load_cuda0(model_id: impl Into<String>, revision: Option<&str>) -> anyhow::Result<Self> {
-        Self::load(model_id, revision, Device::new_cuda(0)?)
+        Self::load(model_id, revision, CudaContext::new(0)?)
     }
 
     /// Loads a local directory or Hugging Face model id and routes architecture automatically.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use engine::GenerationEngine;
+    /// use runtime::CudaContext;
+    ///
+    /// # fn main() -> anyhow::Result<()> {
+    /// let context = CudaContext::new(0)?;
+    /// let engine = GenerationEngine::load("Qwen/Qwen3-0.6B", None, context)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn load(
         model_id: impl Into<String>,
         revision: Option<&str>,
-        device: Device,
+        context: CudaContext,
     ) -> anyhow::Result<Self> {
         let model_id = model_id.into();
-        let loaded = AutoModelForCausalLM::load(&model_id, revision, &device)?;
+        let loaded = AutoModelForCausalLM::load(&model_id, revision, &context)?;
         Ok(Self {
             model_id,
             model: Mutex::new(loaded.model),
-            device,
+            context,
             tokenizer_assets: TokenizerAssets::new(
                 loaded.tokenizer_path,
                 loaded.tokenizer_config_path,
@@ -217,16 +244,37 @@ impl GenerationEngine {
     }
 
     /// Creates an engine from a prebuilt auto-routed model.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use engine::{GenerationEngine, TokenizerAssets};
+    /// use model::AutoModelForCausalLM;
+    /// use runtime::CudaContext;
+    /// use std::path::PathBuf;
+    ///
+    /// # fn main() -> anyhow::Result<()> {
+    /// let context = CudaContext::new(0)?;
+    /// let loaded = AutoModelForCausalLM::load("/models/qwen3", None, &context)?;
+    /// let assets = TokenizerAssets::new(
+    ///     loaded.tokenizer_path,
+    ///     loaded.tokenizer_config_path,
+    ///     loaded.chat_template_path,
+    /// );
+    /// let engine = GenerationEngine::from_model("qwen3", loaded.model, context, assets);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn from_model(
         model_id: impl Into<String>,
         model: AutoModelForCausalLM,
-        device: Device,
+        context: CudaContext,
         tokenizer_assets: TokenizerAssets,
     ) -> Self {
         Self {
             model_id: model_id.into(),
             model: Mutex::new(model),
-            device,
+            context,
             tokenizer_assets,
         }
     }
@@ -242,6 +290,19 @@ impl GenerationEngine {
     }
 
     /// Generates token ids from an already-tokenized prompt.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use engine::{GenerationConfig, GenerationEngine};
+    /// # use runtime::CudaContext;
+    /// # fn main() -> anyhow::Result<()> {
+    /// let context = CudaContext::new(0)?;
+    /// let engine = GenerationEngine::load("Qwen/Qwen3-0.6B", None, context)?;
+    /// let output = engine.generate(&[1, 2, 3], GenerationConfig::default(), |token| token == 2)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn generate(
         &self,
         input_ids: &[u32],
@@ -269,8 +330,10 @@ impl GenerationEngine {
             } else {
                 vec![*context.last().expect("context is never empty")]
             };
-            let input = Tensor::new(forward_tokens.as_slice(), &self.device)?.unsqueeze(0)?;
-            let logits = model.forward(&input, start_pos)?.flatten_all()?;
+            let shape = Shape::new([1, forward_tokens.len()])?;
+            let input = copy_h2d(&self.context, shape, DType::I32, &forward_tokens)?;
+            let logits = model.forward(&input, start_pos)?;
+            let logits = reshape(&logits, [logits.numel()])?;
             let token = sampler.sample(&logits, &generated)?.token_id();
 
             if is_eos(token) {

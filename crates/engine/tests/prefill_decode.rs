@@ -1,38 +1,50 @@
 use cache::{BlockPool, CacheManager, SlotLayout};
-use candle_core::{Device, Result, Tensor};
 use engine::{
     EngineExecutor, Scheduler, SchedulerBudget, Sequence, SequenceGroup, Worker, WorkerHandle,
 };
+use half::bf16;
 use model::{Model, ModelMetadata};
+use runtime::CudaContext;
 use sampling::Sampler;
+use tensor::{DType, Result, Shape, Tensor, copy_h2d};
 
 struct ScriptModel {
     tokens: Vec<u32>,
     calls: usize,
     vocab_size: usize,
+    context: CudaContext,
 }
 
 impl ScriptModel {
-    fn new(tokens: Vec<u32>, vocab_size: usize) -> Self {
+    fn new(tokens: Vec<u32>, vocab_size: usize, context: CudaContext) -> Self {
         Self {
             tokens,
             calls: 0,
             vocab_size,
+            context,
         }
     }
 }
 
 impl Model for ScriptModel {
     fn forward(&mut self, input_ids: &Tensor, _start_pos: usize) -> Result<Tensor> {
-        let dims = input_ids.dims();
+        let dims = input_ids.shape().dims();
         let seq_len = *dims.last().unwrap_or(&1);
         let token = self.tokens[self.calls];
         self.calls += 1;
 
-        let mut logits = vec![0.0_f32; seq_len * self.vocab_size];
+        let total = seq_len * self.vocab_size;
+        let mut logits = vec![0u16; total];
         let row = seq_len - 1;
-        logits[row * self.vocab_size + token as usize] = 100.0;
-        Tensor::from_vec(logits, (1, seq_len, self.vocab_size), input_ids.device())
+        let idx = row * self.vocab_size + token as usize;
+        logits[idx] = bf16::from_f32(100.0).to_bits();
+        copy_h2d(
+            &self.context,
+            Shape::new([1, seq_len, self.vocab_size])
+                .map_err(|e| tensor::TensorError::ShapeMismatch(e.to_string()))?,
+            DType::BF16,
+            &logits,
+        )
     }
 
     fn metadata(&self) -> ModelMetadata {
@@ -47,11 +59,11 @@ impl Model for ScriptModel {
 
 #[test]
 fn full_prefill_and_decode_loop_runs_without_server() {
-    let device = Device::Cpu;
+    let context = CudaContext::new(0).unwrap();
     let pool = BlockPool::new(8, SlotLayout::new(4, 16, 1)).unwrap();
     let cache = CacheManager::new(pool);
-    let model = ScriptModel::new(vec![3, 4, 5], 8);
-    let worker = Worker::new(model, Sampler::default(), cache, device);
+    let model = ScriptModel::new(vec![3, 4, 5], 8, context.clone());
+    let worker = Worker::new(model, Sampler::default(), cache, context);
     let handle = WorkerHandle::spawn(worker);
 
     let sequence = Sequence::new(cache::SequenceId::new(1), vec![1, 2], 3, Some(5)).unwrap();

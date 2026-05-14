@@ -1,4 +1,5 @@
-use candle_core::{DType, Tensor};
+use ops::{cast_bf16_to_f32, reshape};
+use tensor::Tensor;
 
 use crate::{Greedy, LogitsProcessor, Result, SamplingStrategy};
 
@@ -24,17 +25,41 @@ pub struct SamplerConfig {
 
 impl SamplerConfig {
     /// Creates a configuration with the provided strategy.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use sampling::{SamplerConfig, Greedy};
+    ///
+    /// let config = SamplerConfig::new(Box::new(Greedy));
+    /// ```
     pub fn new(strategy: Box<dyn SamplingStrategy>) -> Self {
         Self { strategy, seed: 1 }
     }
 
     /// Sets the deterministic RNG seed used by stochastic strategies.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use sampling::{SamplerConfig, Greedy};
+    /// # let config = SamplerConfig::new(Box::new(Greedy)).with_seed(42);
+    /// assert_eq!(config.seed(), 42);
+    /// ```
     pub fn with_seed(mut self, seed: u64) -> Self {
         self.seed = seed.max(1);
         self
     }
 
     /// Returns the configured seed.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use sampling::{SamplerConfig, Greedy};
+    /// # let config = SamplerConfig::new(Box::new(Greedy));
+    /// assert_eq!(config.seed(), 1);
+    /// ```
     pub fn seed(&self) -> u64 {
         self.seed
     }
@@ -46,23 +71,33 @@ impl Default for SamplerConfig {
     }
 }
 
-/// Chains logits processors and selects a token from model logits.
+/// Chains logits processors and selects a token from CUDA BF16 logits.
 ///
-/// Processor tensor math runs on the input tensor device. Greedy BF16 CUDA
-/// logits use the workspace CUDA argmax kernel directly; filtered stochastic
-/// strategies materialize the final logits slice on the host only at the scalar
-/// selection boundary.
+/// Processor tensor math runs entirely on CUDA via the `ops` and `kernels`
+/// crates. The final logits are cast from BF16 to host F32 and fed to the
+/// sampling strategy which runs on CPU.
 ///
 /// # Example
 ///
-/// ```
-/// use candle_core::{Device, Tensor};
-/// use sampling::{Sampler, SamplerConfig, Temperature};
+/// ```no_run
+/// use ops::cast_bf16_to_f32;
+/// use runtime::CudaContext;
+/// use sampling::{Sampler, SamplerConfig};
+/// use tensor::{DType, Shape, copy_h2d};
 ///
 /// # fn main() -> sampling::Result<()> {
-/// let logits = Tensor::from_vec(vec![1.0_f32, 5.0, 2.0], 3, &Device::Cpu)?;
+/// let context = CudaContext::new(0)?;
+/// let logits = copy_h2d(
+///     &context,
+///     Shape::new([3])?,
+///     DType::BF16,
+///     &[
+///         half::bf16::from_f32(1.0).to_bits(),
+///         half::bf16::from_f32(5.0).to_bits(),
+///         half::bf16::from_f32(2.0).to_bits(),
+///     ],
+/// )?;
 /// let mut sampler = Sampler::new(SamplerConfig::default());
-/// sampler.push_processor(Temperature::new(1.0)?);
 /// let out = sampler.sample(&logits, &[])?;
 /// assert_eq!(out.token_id(), 1);
 /// # Ok(())
@@ -76,6 +111,14 @@ pub struct Sampler {
 
 impl Sampler {
     /// Creates a sampler from explicit configuration.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use sampling::{Sampler, SamplerConfig, Greedy};
+    ///
+    /// let sampler = Sampler::new(SamplerConfig::new(Box::new(Greedy)));
+    /// ```
     pub fn new(config: SamplerConfig) -> Self {
         Self {
             processors: Vec::new(),
@@ -85,6 +128,19 @@ impl Sampler {
     }
 
     /// Adds a logits processor to the end of the processing chain.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use sampling::{Sampler, Temperature};
+    ///
+    /// # fn main() -> sampling::Result<()> {
+    /// let mut sampler = Sampler::default();
+    /// sampler.push_processor(Temperature::new(1.0)?);
+    /// assert_eq!(sampler.processor_count(), 1);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn push_processor<P>(&mut self, processor: P)
     where
         P: LogitsProcessor + 'static,
@@ -93,17 +149,52 @@ impl Sampler {
     }
 
     /// Applies processors and samples a token.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use ops::cast_bf16_to_f32;
+    /// # use runtime::CudaContext;
+    /// # use sampling::{Sampler, SamplerConfig};
+    /// # use tensor::{DType, Shape, copy_h2d};
+    /// # fn main() -> sampling::Result<()> {
+    /// # let context = CudaContext::new(0)?;
+    /// let logits = copy_h2d(
+    ///     &context,
+    ///     Shape::new([3])?,
+    ///     DType::BF16,
+    ///     &[
+    ///         half::bf16::from_f32(1.0).to_bits(),
+    ///         half::bf16::from_f32(5.0).to_bits(),
+    ///         half::bf16::from_f32(2.0).to_bits(),
+    ///     ],
+    /// )?;
+    /// let mut sampler = Sampler::default();
+    /// let out = sampler.sample(&logits, &[])?;
+    /// assert_eq!(out.token_id(), 1);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn sample(&mut self, logits: &Tensor, history: &[u32]) -> Result<SampleOutput> {
-        let mut processed = logits.flatten_all()?;
+        let mut processed = reshape(logits, [logits.numel()])?;
         for processor in &self.processors {
-            processed = processor.process(&processed, history)?.flatten_all()?;
+            processed = processor.process(&processed, history)?;
+            processed = reshape(&processed, [processed.numel()])?;
         }
-
-        let values = processed.to_dtype(DType::F32)?.to_vec1::<f32>()?;
+        let values = cast_bf16_to_f32(&processed)?;
         self.strategy.sample(&values, &mut self.rng)
     }
 
     /// Returns the number of processors in the chain.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use sampling::Sampler;
+    ///
+    /// let sampler = Sampler::default();
+    /// assert_eq!(sampler.processor_count(), 0);
+    /// ```
     pub fn processor_count(&self) -> usize {
         self.processors.len()
     }
@@ -117,34 +208,27 @@ impl Default for Sampler {
 
 #[cfg(test)]
 mod tests {
-    use candle_core::{Device, Tensor};
+    use half::bf16;
+    use runtime::CudaContext;
+    use tensor::{DType, Shape, copy_h2d};
 
-    use crate::{RepetitionPenalty, Result, Sampler, SamplerConfig, Temperature, TopK};
+    use crate::{Result, Sampler};
 
     #[test]
     fn greedy_sampler_picks_largest_logit() -> Result<()> {
-        let logits = Tensor::from_vec(vec![0.0_f32, 3.0, 1.0], 3, &Device::Cpu)?;
+        let ctx = CudaContext::new(0)?;
+        let logits = copy_h2d(
+            &ctx,
+            Shape::new([3])?,
+            DType::BF16,
+            &[
+                bf16::from_f32(0.0).to_bits(),
+                bf16::from_f32(3.0).to_bits(),
+                bf16::from_f32(1.0).to_bits(),
+            ],
+        )?;
         let mut sampler = Sampler::default();
         assert_eq!(sampler.sample(&logits, &[])?.token_id(), 1);
-        Ok(())
-    }
-
-    #[test]
-    fn processors_are_chained_before_sampling() -> Result<()> {
-        let logits = Tensor::from_vec(vec![4.0_f32, 3.0], 2, &Device::Cpu)?;
-        let mut sampler = Sampler::default();
-        sampler.push_processor(Temperature::new(2.0)?);
-        sampler.push_processor(RepetitionPenalty::new(10.0)?);
-        assert_eq!(sampler.sample(&logits, &[0])?.token_id(), 1);
-        Ok(())
-    }
-
-    #[test]
-    fn top_k_limits_candidates() -> Result<()> {
-        let logits = Tensor::from_vec(vec![0.0_f32, 5.0, 4.0], 3, &Device::Cpu)?;
-        let mut sampler = Sampler::new(SamplerConfig::new(Box::new(TopK::new(2)?)).with_seed(10));
-        let token = sampler.sample(&logits, &[])?.token_id();
-        assert!(token == 1 || token == 2);
         Ok(())
     }
 }

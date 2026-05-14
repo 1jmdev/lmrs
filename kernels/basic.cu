@@ -136,3 +136,83 @@ extern "C" __global__ void narrow_dim1_bf16(
     if (src_dim1 >= dim1) return;
     out[idx] = input[(b * dim1 + src_dim1) * width + w];
 }
+
+extern "C" __global__ void affine_bf16(
+    const __nv_bfloat16 *__restrict__ x,
+    __nv_bfloat16 *__restrict__ out,
+    const float scale,
+    const float offset,
+    const int total_elements
+) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total_elements) return;
+    out[idx] = __float2bfloat16(__bfloat162float(x[idx]) * scale + offset);
+}
+
+extern "C" __global__ void sub_bf16(
+    const __nv_bfloat16 *__restrict__ left,
+    const __nv_bfloat16 *__restrict__ right,
+    __nv_bfloat16 *__restrict__ out,
+    const int total_elements
+) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total_elements) return;
+    out[idx] = __float2bfloat16(__bfloat162float(left[idx]) - __bfloat162float(right[idx]));
+}
+
+extern "C" __global__ void scale_bf16_f32(
+    const __nv_bfloat16 *__restrict__ x,
+    __nv_bfloat16 *__restrict__ out,
+    const float scale,
+    const int total_elements
+) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total_elements) return;
+    out[idx] = __float2bfloat16(__bfloat162float(x[idx]) * scale);
+}
+
+extern "C" __global__ void greater_equal_bf16(
+    const __nv_bfloat16 *__restrict__ left,
+    const __nv_bfloat16 *__restrict__ right,
+    __nv_bfloat16 *__restrict__ out,
+    const int total_elements
+) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total_elements) return;
+    const float lv = __bfloat162float(left[idx]);
+    const float rv = __bfloat162float(right[idx]);
+    out[idx] = __float2bfloat16(lv >= rv ? 1.0f : 0.0f);
+}
+
+extern "C" __global__ void where_cond_bf16(
+    const __nv_bfloat16 *__restrict__ cond,
+    const __nv_bfloat16 *__restrict__ true_val,
+    const __nv_bfloat16 *__restrict__ false_val,
+    __nv_bfloat16 *__restrict__ out,
+    const int total_elements
+) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total_elements) return;
+    out[idx] = __bfloat162float(cond[idx]) > 0.0f ? true_val[idx] : false_val[idx];
+}
+
+extern "C" __global__ void cast_bf16_to_f32(
+    const __nv_bfloat16 *__restrict__ x,
+    float *__restrict__ out,
+    const int total_elements
+) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total_elements) return;
+    out[idx] = __bfloat162float(x[idx]);
+}
+
+extern "C" __global__ void mul_bf16(
+    const __nv_bfloat16 *__restrict__ left,
+    const __nv_bfloat16 *__restrict__ right,
+    __nv_bfloat16 *__restrict__ out,
+    const int total_elements
+) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total_elements) return;
+    out[idx] = __float2bfloat16(__bfloat162float(left[idx]) * __bfloat162float(right[idx]));
+}

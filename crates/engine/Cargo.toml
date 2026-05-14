@@ -5,9 +5,13 @@ edition = "2024"
 
 [dependencies]
 anyhow = { workspace = true }
-candle-core = { workspace = true }
 cache = { workspace = true }
 model = { workspace = true }
+ops = { workspace = true }
+runtime = { workspace = true }
 sampling = { workspace = true }
 tensor = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+half = { workspace = true }

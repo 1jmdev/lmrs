@@ -15,6 +15,13 @@ const ZERO_F32: &str = "zero_f32";
 const CONCAT_DIM2_BF16: &str = "concat_dim2_bf16";
 const TRANSPOSE_1_2_BF16: &str = "transpose_1_2_bf16";
 const NARROW_DIM1_BF16: &str = "narrow_dim1_bf16";
+const AFFINE_BF16: &str = "affine_bf16";
+const SUB_BF16: &str = "sub_bf16";
+const SCALE_BF16_F32: &str = "scale_bf16_f32";
+const GREATER_EQUAL_BF16: &str = "greater_equal_bf16";
+const WHERE_COND_BF16: &str = "where_cond_bf16";
+const CAST_BF16_TO_F32: &str = "cast_bf16_to_f32";
+const MUL_BF16: &str = "mul_bf16";
 
 pub fn add_bias(x: &Tensor, bias: &Tensor) -> Result<Tensor> {
     validate_bf16_contiguous(x)?;
@@ -402,6 +409,301 @@ pub fn narrow_dim1(input: &Tensor, start: usize, len: usize) -> Result<Tensor> {
         Stride::contiguous(&out_shape),
         DType::BF16,
     ))
+}
+
+/// Applies `out = scale * x + offset` to a contiguous CUDA BF16 tensor.
+///
+/// # Example
+///
+/// ```no_run
+/// use kernels::affine;
+/// use runtime::CudaContext;
+/// use tensor::{DType, Shape, copy_h2d};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let context = CudaContext::new(0)?;
+/// let x = copy_h2d(&context, Shape::new([4])?, DType::BF16, &[0u16; 4])?;
+/// let y = affine(&x, 2.0f32, 1.0f32)?;
+/// assert_eq!(y.shape().dims(), &[4]);
+/// # Ok(())
+/// # }
+/// ```
+pub fn affine(x: &Tensor, scale: f32, offset: f32) -> Result<Tensor> {
+    validate_bf16_contiguous(x)?;
+    let stream = x.storage().buffer().as_slice().stream();
+    let mut out = unsafe { stream.alloc::<u8>(x.len_bytes())? };
+    let x_view = bf16_view(x)?;
+    let mut out_view = bf16_mut_view(&mut out, x.numel(), "affine output")?;
+    let module = stream.context().load_module(Ptx::from_src(ptx::BASIC))?;
+    let func = module.load_function(AFFINE_BF16)?;
+    let total_elements = to_i32(x.numel(), "total_elements")?;
+    let mut builder = stream.launch_builder(&func);
+    builder.arg(&x_view);
+    builder.arg(&mut out_view);
+    builder.arg(&scale);
+    builder.arg(&offset);
+    builder.arg(&total_elements);
+    launch_1d(&mut builder, x.numel())?;
+    output_like(x, out)
+}
+
+/// Subtracts `right` from `left` elementwise on CUDA BF16.
+///
+/// # Example
+///
+/// ```no_run
+/// use kernels::sub_bf16;
+/// use runtime::CudaContext;
+/// use tensor::{DType, Shape, copy_h2d};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let context = CudaContext::new(0)?;
+/// let left = copy_h2d(&context, Shape::new([2])?, DType::BF16, &[0u16; 2])?;
+/// let right = copy_h2d(&context, Shape::new([2])?, DType::BF16, &[0u16; 2])?;
+/// let y = sub_bf16(&left, &right)?;
+/// assert_eq!(y.shape().dims(), &[2]);
+/// # Ok(())
+/// # }
+/// ```
+pub fn sub_bf16(left: &Tensor, right: &Tensor) -> Result<Tensor> {
+    validate_bf16_contiguous(left)?;
+    validate_bf16_contiguous(right)?;
+    if left.shape().dims() != right.shape().dims() {
+        return Err(TensorError::ShapeMismatch(format!(
+            "sub expected matching shapes, got {:?} and {:?}",
+            left.shape().dims(),
+            right.shape().dims()
+        )));
+    }
+    let stream = left.storage().buffer().as_slice().stream();
+    let mut out = unsafe { stream.alloc::<u8>(left.len_bytes())? };
+    let left_view = bf16_view(left)?;
+    let right_view = bf16_view(right)?;
+    let mut out_view = bf16_mut_view(&mut out, left.numel(), "sub output")?;
+    let module = stream.context().load_module(Ptx::from_src(ptx::BASIC))?;
+    let func = module.load_function(SUB_BF16)?;
+    let total_elements = to_i32(left.numel(), "total_elements")?;
+    let mut builder = stream.launch_builder(&func);
+    builder.arg(&left_view);
+    builder.arg(&right_view);
+    builder.arg(&mut out_view);
+    builder.arg(&total_elements);
+    launch_1d(&mut builder, left.numel())?;
+    output_like(left, out)
+}
+
+/// Multiplies a CUDA BF16 tensor by a float scalar.
+///
+/// # Example
+///
+/// ```no_run
+/// use kernels::scale_bf16;
+/// use runtime::CudaContext;
+/// use tensor::{DType, Shape, copy_h2d};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let context = CudaContext::new(0)?;
+/// let x = copy_h2d(&context, Shape::new([2])?, DType::BF16, &[0u16; 2])?;
+/// let y = scale_bf16(&x, 2.0f32)?;
+/// assert_eq!(y.shape().dims(), &[2]);
+/// # Ok(())
+/// # }
+/// ```
+pub fn scale_bf16(x: &Tensor, scale: f32) -> Result<Tensor> {
+    validate_bf16_contiguous(x)?;
+    let stream = x.storage().buffer().as_slice().stream();
+    let mut out = unsafe { stream.alloc::<u8>(x.len_bytes())? };
+    let x_view = bf16_view(x)?;
+    let mut out_view = bf16_mut_view(&mut out, x.numel(), "scale output")?;
+    let module = stream.context().load_module(Ptx::from_src(ptx::BASIC))?;
+    let func = module.load_function(SCALE_BF16_F32)?;
+    let total_elements = to_i32(x.numel(), "total_elements")?;
+    let mut builder = stream.launch_builder(&func);
+    builder.arg(&x_view);
+    builder.arg(&mut out_view);
+    builder.arg(&scale);
+    builder.arg(&total_elements);
+    launch_1d(&mut builder, x.numel())?;
+    output_like(x, out)
+}
+
+/// Compares `left >= right` elementwise, outputting 1.0 or 0.0 as BF16.
+///
+/// # Example
+///
+/// ```no_run
+/// use kernels::greater_equal_bf16;
+/// use runtime::CudaContext;
+/// use tensor::{DType, Shape, copy_h2d};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let context = CudaContext::new(0)?;
+/// let x = copy_h2d(&context, Shape::new([2])?, DType::BF16, &[0u16; 2])?;
+/// let y = greater_equal_bf16(&x, &x)?;
+/// assert_eq!(y.shape().dims(), &[2]);
+/// # Ok(())
+/// # }
+/// ```
+pub fn greater_equal_bf16(left: &Tensor, right: &Tensor) -> Result<Tensor> {
+    validate_bf16_contiguous(left)?;
+    validate_bf16_contiguous(right)?;
+    if left.shape().dims() != right.shape().dims() {
+        return Err(TensorError::ShapeMismatch(format!(
+            "greater_equal expected matching shapes, got {:?} and {:?}",
+            left.shape().dims(),
+            right.shape().dims()
+        )));
+    }
+    let stream = left.storage().buffer().as_slice().stream();
+    let mut out = unsafe { stream.alloc::<u8>(left.len_bytes())? };
+    let left_view = bf16_view(left)?;
+    let right_view = bf16_view(right)?;
+    let mut out_view = bf16_mut_view(&mut out, left.numel(), "ge output")?;
+    let module = stream.context().load_module(Ptx::from_src(ptx::BASIC))?;
+    let func = module.load_function(GREATER_EQUAL_BF16)?;
+    let total_elements = to_i32(left.numel(), "total_elements")?;
+    let mut builder = stream.launch_builder(&func);
+    builder.arg(&left_view);
+    builder.arg(&right_view);
+    builder.arg(&mut out_view);
+    builder.arg(&total_elements);
+    launch_1d(&mut builder, left.numel())?;
+    output_like(left, out)
+}
+
+/// Selects `true_val[i]` when `cond[i] > 0`, otherwise `false_val[i]`.
+///
+/// # Example
+///
+/// ```no_run
+/// use kernels::where_cond_bf16;
+/// use runtime::CudaContext;
+/// use tensor::{DType, Shape, copy_h2d};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let context = CudaContext::new(0)?;
+/// let cond = copy_h2d(&context, Shape::new([2])?, DType::BF16, &[0u16, 0x3F80u16])?;
+/// let t = copy_h2d(&context, Shape::new([2])?, DType::BF16, &[1u16, 2u16])?;
+/// let f = copy_h2d(&context, Shape::new([2])?, DType::BF16, &[3u16, 4u16])?;
+/// let y = where_cond_bf16(&cond, &t, &f)?;
+/// assert_eq!(y.shape().dims(), &[2]);
+/// # Ok(())
+/// # }
+/// ```
+pub fn where_cond_bf16(cond: &Tensor, true_val: &Tensor, false_val: &Tensor) -> Result<Tensor> {
+    validate_bf16_contiguous(cond)?;
+    validate_bf16_contiguous(true_val)?;
+    validate_bf16_contiguous(false_val)?;
+    if true_val.shape().dims() != false_val.shape().dims()
+        || true_val.shape().dims() != cond.shape().dims()
+    {
+        return Err(TensorError::ShapeMismatch(format!(
+            "where_cond expected matching shapes, got {:?}, {:?}, {:?}",
+            cond.shape().dims(),
+            true_val.shape().dims(),
+            false_val.shape().dims()
+        )));
+    }
+    let stream = cond.storage().buffer().as_slice().stream();
+    let mut out = unsafe { stream.alloc::<u8>(cond.len_bytes())? };
+    let cond_view = bf16_view(cond)?;
+    let tv = bf16_view(true_val)?;
+    let fv = bf16_view(false_val)?;
+    let mut out_view = bf16_mut_view(&mut out, cond.numel(), "where_cond output")?;
+    let module = stream.context().load_module(Ptx::from_src(ptx::BASIC))?;
+    let func = module.load_function(WHERE_COND_BF16)?;
+    let total_elements = to_i32(cond.numel(), "total_elements")?;
+    let mut builder = stream.launch_builder(&func);
+    builder.arg(&cond_view);
+    builder.arg(&tv);
+    builder.arg(&fv);
+    builder.arg(&mut out_view);
+    builder.arg(&total_elements);
+    launch_1d(&mut builder, cond.numel())?;
+    output_like(cond, out)
+}
+
+/// Casts a contiguous CUDA BF16 tensor to F32 and copies to host.
+///
+/// # Example
+///
+/// ```no_run
+/// use kernels::cast_bf16_to_f32;
+/// use runtime::CudaContext;
+/// use tensor::{DType, Shape, copy_h2d};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let context = CudaContext::new(0)?;
+/// let x = copy_h2d(&context, Shape::new([2])?, DType::BF16, &[0u16; 2])?;
+/// let host = cast_bf16_to_f32(&x)?;
+/// assert_eq!(host.len(), 2);
+/// # Ok(())
+/// # }
+/// ```
+pub fn cast_bf16_to_f32(x: &Tensor) -> Result<Vec<f32>> {
+    validate_bf16_contiguous(x)?;
+    let stream = x.storage().buffer().as_slice().stream();
+    let numel = x.numel();
+    let mut out = unsafe { stream.alloc::<f32>(numel)? };
+    let x_view = bf16_view(x)?;
+    let mut out_view = unsafe { out.transmute_mut::<f32>(numel) }.ok_or_else(|| {
+        TensorError::InvalidArgument("failed to create F32 output view".to_string())
+    })?;
+    let module = stream.context().load_module(Ptx::from_src(ptx::BASIC))?;
+    let func = module.load_function(CAST_BF16_TO_F32)?;
+    let total_elements = to_i32(numel, "total_elements")?;
+    let mut builder = stream.launch_builder(&func);
+    builder.arg(&x_view);
+    builder.arg(&mut out_view);
+    builder.arg(&total_elements);
+    launch_1d(&mut builder, numel)?;
+    Ok(stream.clone_dtoh(&out)?)
+}
+
+/// Multiplies two CUDA BF16 tensors elementwise.
+///
+/// # Example
+///
+/// ```no_run
+/// use kernels::mul_bf16;
+/// use runtime::CudaContext;
+/// use tensor::{DType, Shape, copy_h2d};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let context = CudaContext::new(0)?;
+/// let shape = Shape::new([2])?;
+/// let left = copy_h2d(&context, shape.clone(), DType::BF16, &[0u16; 2])?;
+/// let right = copy_h2d(&context, shape, DType::BF16, &[0u16; 2])?;
+/// let y = mul_bf16(&left, &right)?;
+/// assert_eq!(y.shape().dims(), &[2]);
+/// # Ok(())
+/// # }
+/// ```
+pub fn mul_bf16(left: &Tensor, right: &Tensor) -> Result<Tensor> {
+    validate_bf16_contiguous(left)?;
+    validate_bf16_contiguous(right)?;
+    if left.shape().dims() != right.shape().dims() {
+        return Err(TensorError::ShapeMismatch(format!(
+            "mul expected matching shapes, got {:?} and {:?}",
+            left.shape().dims(),
+            right.shape().dims()
+        )));
+    }
+    let stream = left.storage().buffer().as_slice().stream();
+    let mut out = unsafe { stream.alloc::<u8>(left.len_bytes())? };
+    let left_view = bf16_view(left)?;
+    let right_view = bf16_view(right)?;
+    let mut out_view = bf16_mut_view(&mut out, left.numel(), "mul output")?;
+    let module = stream.context().load_module(Ptx::from_src(ptx::BASIC))?;
+    let func = module.load_function(MUL_BF16)?;
+    let total_elements = to_i32(left.numel(), "total_elements")?;
+    let mut builder = stream.launch_builder(&func);
+    builder.arg(&left_view);
+    builder.arg(&right_view);
+    builder.arg(&mut out_view);
+    builder.arg(&total_elements);
+    launch_1d(&mut builder, left.numel())?;
+    output_like(left, out)
 }
 
 fn output_like(input: &Tensor, out: cudarc::driver::CudaSlice<u8>) -> Result<Tensor> {

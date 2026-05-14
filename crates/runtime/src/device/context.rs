@@ -79,6 +79,25 @@ impl CudaContext {
         self.context
     }
 
+    /// Wraps an existing cudarc CUDA context.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use runtime::CudaContext;
+    ///
+    /// # fn main() -> runtime::Result<()> {
+    /// let context = CudaContext::new(0)?;
+    /// let raw = context.cudarc().clone();
+    /// let wrapped = CudaContext::from_cudarc(raw);
+    /// assert_eq!(wrapped.ordinal(), 0);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn from_cudarc(context: Arc<CudarcContext>) -> Self {
+        Self { context }
+    }
+
     /// Returns the CUDA device ordinal.
     ///
     /// # Example
