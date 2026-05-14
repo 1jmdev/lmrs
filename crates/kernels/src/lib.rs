@@ -7,6 +7,6 @@ pub mod ptx;
 pub mod quant;
 pub mod utils;
 
-pub use activation::fused_silu_mul;
+pub use activation::{fused_silu_mul, gelu};
 pub use attention::causal_mask;
 pub use utils::gpu_argmax;

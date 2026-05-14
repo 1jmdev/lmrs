@@ -51,6 +51,7 @@ const CUDA_SOURCES: &[(&str, &str)] = &[
         "ACTIVATION_FUSED_GELU_MUL",
         "../../kernels/activation/fused_gelu_mul.cu",
     ),
+    ("ACTIVATION_GELU", "../../kernels/activation/gelu.cu"),
     (
         "ACTIVATION_ACT_QUANT",
         "../../kernels/activation/act_quant.cu",
