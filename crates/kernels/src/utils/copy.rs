@@ -12,22 +12,3 @@ pub const GATHER_BF16: &str = "gather_bf16";
 
 /// Exported BF16 scatter symbol.
 pub const SCATTER_BF16: &str = "scatter_bf16";
-
-/// Block copy shape metadata.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct CopyBlocksLaunch {
-    /// Number of bytes per copied block.
-    pub block_bytes: usize,
-    /// Number of blocks to copy.
-    pub blocks: usize,
-}
-
-impl CopyBlocksLaunch {
-    /// Creates block copy metadata.
-    pub fn new(block_bytes: usize, blocks: usize) -> Self {
-        Self {
-            block_bytes,
-            blocks,
-        }
-    }
-}

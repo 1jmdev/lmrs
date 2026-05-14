@@ -1,4 +1,4 @@
-use candle_core::{DType, Device, Tensor};
+use candle_core::{DType, Tensor};
 
 use crate::{Greedy, LogitsProcessor, Result, SamplingStrategy};
 
@@ -97,14 +97,6 @@ impl Sampler {
         let mut processed = logits.flatten_all()?;
         for processor in &self.processors {
             processed = processor.process(&processed, history)?.flatten_all()?;
-        }
-
-        if self.processors.is_empty()
-            && processed.dtype() == DType::BF16
-            && matches!(processed.device(), Device::Cuda(_))
-        {
-            let token = kernels::gpu_argmax(&processed)?;
-            return Ok(SampleOutput::new(token, 0.0, f32::NAN));
         }
 
         let values = processed.to_dtype(DType::F32)?.to_vec1::<f32>()?;

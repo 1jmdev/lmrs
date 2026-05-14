@@ -1656,9 +1656,10 @@ dependencies = [
 name = "kernels"
 version = "0.1.0"
 dependencies = [
- "candle-core",
+ "cudarc 0.19.6",
  "half",
  "runtime",
+ "tensor",
 ]
 
 [[package]]
@@ -2840,7 +2841,6 @@ version = "0.1.0"
 dependencies = [
  "cudarc 0.19.6",
  "half",
- "kernels",
  "runtime",
  "thiserror 2.0.18",
 ]

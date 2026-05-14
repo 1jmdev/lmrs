@@ -1,6 +1,5 @@
-use candle_core::{Result, Tensor};
+use candle_core::{D, Result, Tensor};
 use candle_nn::{Linear, Module, VarBuilder, linear_no_bias};
-use ops::fused_silu_mul;
 
 /// Configuration for the Qwen-style gated SiLU MLP.
 ///
@@ -77,7 +76,9 @@ impl GatedSiluMlp {
     /// Applies the MLP to hidden states shaped `[..., hidden_size]`.
     pub fn forward(&self, x: &Tensor) -> Result<Tensor> {
         let gate_up = self.gate_up_proj.forward(x)?.contiguous()?;
-        let activated = fused_silu_mul(&gate_up, self.intermediate_size)?;
+        let gate = gate_up.narrow(D::Minus1, 0, self.intermediate_size)?;
+        let up = gate_up.narrow(D::Minus1, self.intermediate_size, self.intermediate_size)?;
+        let activated = (gate.silu()? * up)?;
         self.down_proj.forward(&activated)
     }
 }

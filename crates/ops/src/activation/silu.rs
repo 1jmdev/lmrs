@@ -1,4 +1,4 @@
-use candle_core::{Result, Tensor};
+use tensor::{Result, Tensor};
 
 /// Applies the fused SiLU-and-multiply activation used by gated MLPs.
 ///

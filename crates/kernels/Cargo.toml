@@ -9,6 +9,7 @@ fp8 = []
 mla = []
 
 [dependencies]
-candle-core = { workspace = true }
+cudarc = { workspace = true }
 half = { workspace = true }
 runtime = { workspace = true }
+tensor = { workspace = true }

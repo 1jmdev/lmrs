@@ -1,12 +1,14 @@
+use cudarc::driver::LaunchConfig;
+use cudarc::driver::PushKernelArg;
+use cudarc::nvrtc::Ptx;
+use runtime::CudaContext;
+use tensor::{CudaBuf, DType, Result, Shape, SharedStorage, Stride, Tensor, TensorError};
+
 use crate::ptx;
-use candle_core::backend::BackendStorage;
-use candle_core::cuda_backend::cudarc::driver::{LaunchConfig, PushKernelArg};
-use candle_core::cuda_backend::{CudaStorage, CudaStorageSlice, WrapErr};
-use candle_core::{CpuStorage, DType, Device, Layout, Result, Shape, Tensor};
 
-const MODULE_NAME: &str = "lmrs_attention_paged";
+const MODULE_FUNCTION: &str = "generic_causal_mask_bf16";
 
-/// Builds a BF16 causal attention mask on the current CUDA device.
+/// Builds a BF16 causal attention mask on the selected CUDA device.
 ///
 /// The result shape is `[1, 1, seq_len, total_len]` so it broadcasts over
 /// batch and head dimensions before softmax.
@@ -14,82 +16,63 @@ pub fn causal_mask(
     seq_len: usize,
     total_len: usize,
     start_pos: usize,
-    device: &Device,
+    context: &CudaContext,
 ) -> Result<Tensor> {
-    if !device.is_cuda() {
-        candle_core::bail!("causal_mask requires CUDA");
-    }
-    let zeros = Tensor::zeros((seq_len, total_len), DType::BF16, device)?;
-    zeros
-        .apply_op1_no_bwd(&CausalMask {
-            seq_len,
-            total_len,
-            start_pos,
-        })?
-        .unsqueeze(0)?
-        .unsqueeze(0)
-}
-
-struct CausalMask {
-    seq_len: usize,
-    total_len: usize,
-    start_pos: usize,
-}
-
-impl candle_core::CustomOp1 for CausalMask {
-    fn name(&self) -> &'static str {
-        "attention-causal-mask"
+    if seq_len == 0 || total_len == 0 {
+        return Err(TensorError::InvalidArgument(format!(
+            "causal_mask dimensions must be non-zero, got seq_len={seq_len}, total_len={total_len}"
+        )));
     }
 
-    fn cpu_fwd(&self, _storage: &CpuStorage, _layout: &Layout) -> Result<(CpuStorage, Shape)> {
-        candle_core::bail!("causal_mask is CUDA-only")
-    }
+    let shape = Shape::new([1, 1, seq_len, total_len])
+        .map_err(|err| TensorError::ShapeMismatch(err.to_string()))?;
+    let elem_count = shape.numel();
+    let mut out = unsafe {
+        context
+            .cudarc()
+            .default_stream()
+            .alloc::<u8>(elem_count * DType::BF16.size_in_bytes())?
+    };
+    let mut out_view = unsafe { out.transmute_mut::<half::bf16>(elem_count) }.ok_or_else(|| {
+        TensorError::InvalidArgument("failed to create BF16 causal mask view".to_string())
+    })?;
 
-    fn cuda_fwd(&self, storage: &CudaStorage, layout: &Layout) -> Result<(CudaStorage, Shape)> {
-        if !layout.is_contiguous() {
-            candle_core::bail!("causal_mask requires contiguous input");
-        }
-        if storage.dtype() != DType::BF16 {
-            candle_core::bail!("causal_mask is BF16-only");
-        }
-        let dev = storage.device();
-        let elem_count = layout.shape().elem_count();
-        let func = dev.get_or_load_custom_func(
-            "generic_causal_mask_bf16",
-            MODULE_NAME,
-            ptx::ATTENTION_PAGED_ATTN_FWD,
-        )?;
-        let seq_len = self.seq_len as i32;
-        let total_len = self.total_len as i32;
-        let start_pos = self.start_pos as i32;
-        let cfg = LaunchConfig {
+    let stream = context.cudarc().default_stream();
+    let module = stream
+        .context()
+        .load_module(Ptx::from_src(ptx::ATTENTION_PAGED_ATTN_FWD))?;
+    let func = module.load_function(MODULE_FUNCTION)?;
+    let seq_len_i32 = to_i32(seq_len, "seq_len")?;
+    let total_len_i32 = to_i32(total_len, "total_len")?;
+    let start_pos_i32 = to_i32(start_pos, "start_pos")?;
+    let mut builder = stream.launch_builder(&func);
+    builder.arg(&mut out_view);
+    builder.arg(&seq_len_i32);
+    builder.arg(&total_len_i32);
+    builder.arg(&start_pos_i32);
+    unsafe {
+        builder.launch(LaunchConfig {
             grid_dim: (
-                (self.total_len as u32).div_ceil(256),
-                self.seq_len as u32,
+                to_u32(total_len.div_ceil(256), "grid_x")?,
+                to_u32(seq_len, "grid_y")?,
                 1,
             ),
             block_dim: (256, 1, 1),
             shared_mem_bytes: 0,
-        };
-        let slice = match &storage.slice {
-            CudaStorageSlice::BF16(_) => {
-                let dst = unsafe { dev.alloc::<half::bf16>(elem_count)? };
-                let mut builder = func.builder();
-                builder.arg(&dst);
-                builder.arg(&seq_len);
-                builder.arg(&total_len);
-                builder.arg(&start_pos);
-                unsafe { builder.launch(cfg) }.w()?;
-                CudaStorageSlice::BF16(dst)
-            }
-            _ => candle_core::bail!("causal_mask is BF16-only"),
-        };
-        Ok((
-            CudaStorage {
-                slice,
-                device: dev.clone(),
-            },
-            layout.shape().clone(),
-        ))
+        })?;
     }
+
+    let stride = Stride::contiguous(&shape);
+    let storage = SharedStorage::new(CudaBuf::from_slice(out));
+    Ok(Tensor::from_storage(storage, shape, stride, DType::BF16))
+}
+
+fn to_i32(value: usize, name: &str) -> Result<i32> {
+    i32::try_from(value)
+        .map_err(|_| TensorError::InvalidArgument(format!("{name} {value} exceeds i32::MAX")))
+}
+
+fn to_u32(value: usize, name: &str) -> Result<u32> {
+    u32::try_from(value)
+        .map_err(|_| TensorError::InvalidArgument(format!("{name} {value} exceeds u32::MAX")))
 }

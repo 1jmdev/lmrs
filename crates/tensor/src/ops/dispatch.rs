@@ -1,4 +1,3 @@
-use kernels::utils::CopyBlocksLaunch;
 use thiserror::Error;
 
 use crate::Tensor;
@@ -37,6 +36,25 @@ pub struct CopyPlan {
     pub kernel: CopyKernel,
     /// Launch metadata understood by the kernels crate.
     pub launch: CopyBlocksLaunch,
+}
+
+/// Block copy shape metadata.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CopyBlocksLaunch {
+    /// Number of bytes per copied block.
+    pub block_bytes: usize,
+    /// Number of blocks to copy.
+    pub blocks: usize,
+}
+
+impl CopyBlocksLaunch {
+    /// Creates block copy metadata.
+    pub fn new(block_bytes: usize, blocks: usize) -> Self {
+        Self {
+            block_bytes,
+            blocks,
+        }
+    }
 }
 
 /// Copy kernel symbol selected through the kernels crate.
