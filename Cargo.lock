@@ -232,6 +232,7 @@ checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 name = "cache"
 version = "0.1.0"
 dependencies = [
+ "kernels",
  "runtime",
  "tensor",
  "thiserror 2.0.18",
@@ -1840,6 +1841,7 @@ name = "model"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cache",
  "candle-core",
  "candle-nn",
  "hf-hub",
@@ -2080,6 +2082,7 @@ dependencies = [
 name = "ops"
 version = "0.1.0"
 dependencies = [
+ "cache",
  "cudarc 0.19.6",
  "half",
  "kernels",
