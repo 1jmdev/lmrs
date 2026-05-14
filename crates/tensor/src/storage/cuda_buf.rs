@@ -1,7 +1,7 @@
-use candle_core::Result;
-use candle_core::cuda_backend::CudaDevice;
 use cudarc::driver::CudaSlice;
-use runtime::cuda_alloc;
+use runtime::CudaContext;
+
+use crate::Result;
 
 /// Owned raw CUDA allocation measured in bytes.
 ///
@@ -12,13 +12,12 @@ use runtime::cuda_alloc;
 /// # Example
 ///
 /// ```no_run
-/// use candle_core::Device;
+/// use runtime::CudaContext;
 /// use tensor::CudaBuf;
 ///
-/// # fn main() -> candle_core::Result<()> {
-/// let device = Device::new_cuda(0)?;
-/// let cuda = device.as_cuda_device()?;
-/// let buf = CudaBuf::new(cuda, 4096)?;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let context = CudaContext::new(0)?;
+/// let buf = CudaBuf::new(&context, 4096)?;
 /// assert_eq!(buf.len_bytes(), 4096);
 /// # Ok(())
 /// # }
@@ -30,8 +29,8 @@ pub struct CudaBuf {
 
 impl CudaBuf {
     /// Allocates `len_bytes` uninitialized bytes on `device`.
-    pub fn new(device: &CudaDevice, len_bytes: usize) -> Result<Self> {
-        let data = unsafe { cuda_alloc::<u8>(device, len_bytes)? };
+    pub fn new(context: &CudaContext, len_bytes: usize) -> Result<Self> {
+        let data = unsafe { context.cudarc().default_stream().alloc::<u8>(len_bytes)? };
         Ok(Self { data })
     }
 

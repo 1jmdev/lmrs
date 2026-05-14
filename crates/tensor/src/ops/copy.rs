@@ -1,9 +1,7 @@
-use candle_core::cuda_backend::{CudaDevice, WrapErr};
-use candle_core::{Result, bail};
 use cudarc::driver::{CudaSlice, DeviceRepr};
-use runtime::{CudaContext, clone_dtoh};
+use runtime::CudaContext;
 
-use crate::{CudaBuf, DType, Shape, SharedStorage, Stride, Tensor};
+use crate::{CudaBuf, DType, Result, Shape, SharedStorage, Stride, Tensor};
 
 /// Host/device copy validation failures.
 #[derive(Clone, Debug, thiserror::Error, Eq, PartialEq)]
@@ -29,25 +27,24 @@ pub enum CopyError {
 /// # Example
 ///
 /// ```no_run
-/// use candle_core::Device;
+/// use runtime::CudaContext;
 /// use tensor::{DType, Shape, Tensor, copy_dtoh};
 ///
-/// # fn main() -> candle_core::Result<()> {
-/// let device = Device::new_cuda(0)?;
-/// let cuda = device.as_cuda_device()?;
-/// let raw = unsafe { runtime::cuda_alloc::<f32>(cuda, 4)? };
-/// let tensor = Tensor::empty(cuda, Shape::new([4]).unwrap(), DType::F32)?;
-/// let host = copy_dtoh::<f32>(cuda, &tensor, &raw)?;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let context = CudaContext::new(0)?;
+/// let raw = unsafe { context.cudarc().default_stream().alloc::<f32>(4)? };
+/// let tensor = Tensor::empty(&context, Shape::new([4]).unwrap(), DType::F32)?;
+/// let host = copy_dtoh::<f32>(&context, &tensor, &raw)?;
 /// assert_eq!(host.len(), 4);
 /// # Ok(())
 /// # }
 /// ```
-pub fn copy_dtoh<T>(device: &CudaDevice, tensor: &Tensor, slice: &CudaSlice<T>) -> Result<Vec<T>>
+pub fn copy_dtoh<T>(context: &CudaContext, tensor: &Tensor, slice: &CudaSlice<T>) -> Result<Vec<T>>
 where
     T: DeviceRepr + Default + Clone,
 {
     validate_typed::<T>(tensor, slice.len())?;
-    clone_dtoh(device, slice)
+    Ok(context.cudarc().default_stream().clone_dtoh(slice)?)
 }
 
 /// Copies a host buffer into a new contiguous CUDA tensor.
@@ -58,26 +55,25 @@ where
 /// # Example
 ///
 /// ```no_run
-/// use candle_core::Device;
+/// use runtime::CudaContext;
 /// use tensor::{DType, Shape, Tensor, copy_h2d};
 ///
-/// # fn main() -> candle_core::Result<()> {
-/// let device = Device::new_cuda(0)?;
-/// let tensor = copy_h2d(device.as_cuda_device()?, Shape::new([2]).unwrap(), DType::F32, &[1.0f32, 2.0])?;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let context = CudaContext::new(0)?;
+/// let tensor = copy_h2d(&context, Shape::new([2]).unwrap(), DType::F32, &[1.0f32, 2.0])?;
 /// assert_eq!(tensor.numel(), 2);
 /// # Ok(())
 /// # }
 /// ```
 pub fn copy_h2d<T: DeviceRepr>(
-    device: &CudaDevice,
+    context: &CudaContext,
     shape: Shape,
     dtype: DType,
     host: &[T],
 ) -> Result<Tensor> {
     validate_parts::<T>(dtype, shape.numel(), host.len())?;
     let bytes = host_as_bytes(host);
-    let context = CudaContext::from_candle(device.clone())?;
-    let data = context.cudarc().default_stream().clone_htod(bytes).w()?;
+    let data = context.cudarc().default_stream().clone_htod(bytes)?;
     let storage = SharedStorage::new(CudaBuf::from_slice(data));
     let stride = Stride::contiguous(&shape);
     Ok(Tensor::from_storage(storage, shape, stride, dtype))
@@ -91,23 +87,19 @@ fn validate_parts<T>(dtype: DType, tensor_len: usize, len: usize) -> Result<()> 
     let host_size = std::mem::size_of::<T>();
     let dtype_size = dtype.size_in_bytes();
     if host_size != dtype_size {
-        bail!(
-            "{}",
-            CopyError::ElementSizeMismatch {
-                host_size,
-                dtype,
-                dtype_size
-            }
-        );
+        return Err(CopyError::ElementSizeMismatch {
+            host_size,
+            dtype,
+            dtype_size,
+        }
+        .into());
     }
     if len != tensor_len {
-        bail!(
-            "{}",
-            CopyError::LengthMismatch {
-                host_len: len,
-                tensor_len
-            }
-        );
+        return Err(CopyError::LengthMismatch {
+            host_len: len,
+            tensor_len,
+        }
+        .into());
     }
     Ok(())
 }

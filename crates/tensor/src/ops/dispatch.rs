@@ -19,13 +19,13 @@ pub enum DispatchError {
 /// # Example
 ///
 /// ```no_run
-/// use candle_core::Device;
+/// use runtime::CudaContext;
 /// use tensor::{DType, KernelDispatch, Shape, Tensor};
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let device = Device::new_cuda(0)?;
-/// let a = Tensor::empty(device.as_cuda_device()?, Shape::new([4]).unwrap(), DType::U8)?;
-/// let b = Tensor::empty(device.as_cuda_device()?, Shape::new([4]).unwrap(), DType::U8)?;
+/// let context = CudaContext::new(0)?;
+/// let a = Tensor::empty(&context, Shape::new([4]).unwrap(), DType::U8)?;
+/// let b = Tensor::empty(&context, Shape::new([4]).unwrap(), DType::U8)?;
 /// let plan = KernelDispatch::copy_plan(&a, &b)?;
 /// assert_eq!(plan.launch.block_bytes, 4);
 /// # Ok(())

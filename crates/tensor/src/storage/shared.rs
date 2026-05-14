@@ -11,12 +11,12 @@ use crate::CudaBuf;
 /// # Example
 ///
 /// ```no_run
-/// use candle_core::Device;
+/// use runtime::CudaContext;
 /// use tensor::{CudaBuf, SharedStorage};
 ///
-/// # fn main() -> candle_core::Result<()> {
-/// let device = Device::new_cuda(0)?;
-/// let storage = SharedStorage::new(CudaBuf::new(device.as_cuda_device()?, 16)?);
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let context = CudaContext::new(0)?;
+/// let storage = SharedStorage::new(CudaBuf::new(&context, 16)?);
 /// assert_eq!(storage.len_bytes(), 16);
 /// # Ok(())
 /// # }

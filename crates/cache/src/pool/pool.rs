@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
-use candle_core::Result as CandleResult;
-use candle_core::cuda_backend::CudaDevice;
+use runtime::CudaContext;
 use tensor::CudaBuf;
 use thiserror::Error;
 
@@ -23,6 +22,9 @@ pub enum BlockPoolError {
     /// The layout has no usable bytes per block.
     #[error("block layout must contain at least one byte")]
     EmptyLayout,
+    /// CUDA backing allocation failed.
+    #[error("CUDA backing allocation failed: {0}")]
+    Tensor(String),
 }
 
 /// Free-list allocator over fixed-size cache blocks.
@@ -72,25 +74,26 @@ impl BlockPool {
     /// # Example
     ///
     /// ```no_run
-    /// use candle_core::Device;
+    /// use runtime::CudaContext;
     /// use cache::{BlockPool, SlotLayout};
     ///
-    /// # fn main() -> candle_core::Result<()> {
-    /// let device = Device::new_cuda(0)?;
-    /// let cuda = device.as_cuda_device()?;
-    /// let pool = BlockPool::new_cuda(cuda, 8, SlotLayout::new(16, 128, 2))?;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let context = CudaContext::new(0)?;
+    /// let pool = BlockPool::new_cuda(&context, 8, SlotLayout::new(16, 128, 2))?;
     /// assert_eq!(pool.capacity(), 8);
     /// # Ok(())
     /// # }
     /// ```
     pub fn new_cuda(
-        device: &CudaDevice,
+        context: &CudaContext,
         capacity: usize,
         layout: SlotLayout,
-    ) -> CandleResult<Self> {
-        let mut pool = Self::new(capacity, layout).map_err(candle_core::Error::msg)?;
+    ) -> Result<Self, BlockPoolError> {
+        let mut pool = Self::new(capacity, layout)?;
         let bytes = capacity * layout.block_size_bytes();
-        pool.backing = Some(CudaBuf::new(device, bytes)?);
+        pool.backing = Some(
+            CudaBuf::new(context, bytes).map_err(|err| BlockPoolError::Tensor(err.to_string()))?,
+        );
         Ok(pool)
     }
 

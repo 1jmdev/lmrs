@@ -1,7 +1,6 @@
-use candle_core::Result;
-use candle_core::cuda_backend::CudaDevice;
+use runtime::CudaContext;
 
-use crate::{CudaBuf, DType, Shape, SharedStorage, Stride};
+use crate::{CudaBuf, DType, Result, Shape, SharedStorage, Stride};
 
 /// Core CUDA tensor metadata and storage handle.
 ///
@@ -11,12 +10,12 @@ use crate::{CudaBuf, DType, Shape, SharedStorage, Stride};
 /// # Example
 ///
 /// ```no_run
-/// use candle_core::Device;
+/// use runtime::CudaContext;
 /// use tensor::{DType, Shape, Tensor};
 ///
-/// # fn main() -> candle_core::Result<()> {
-/// let device = Device::new_cuda(0)?;
-/// let tensor = Tensor::empty(device.as_cuda_device()?, Shape::new([2, 3]).unwrap(), DType::F32)?;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let context = CudaContext::new(0)?;
+/// let tensor = Tensor::empty(&context, Shape::new([2, 3]).unwrap(), DType::F32)?;
 /// assert_eq!(tensor.len_bytes(), 24);
 /// # Ok(())
 /// # }
@@ -31,9 +30,9 @@ pub struct Tensor {
 
 impl Tensor {
     /// Allocates an uninitialized contiguous tensor.
-    pub fn empty(device: &CudaDevice, shape: Shape, dtype: DType) -> Result<Self> {
+    pub fn empty(context: &CudaContext, shape: Shape, dtype: DType) -> Result<Self> {
         let len_bytes = shape.numel() * dtype.size_in_bytes();
-        let storage = SharedStorage::new(CudaBuf::new(device, len_bytes)?);
+        let storage = SharedStorage::new(CudaBuf::new(context, len_bytes)?);
         let stride = Stride::contiguous(&shape);
         Ok(Self {
             shape,
