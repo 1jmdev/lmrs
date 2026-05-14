@@ -1,4 +1,4 @@
-use candle_core::{Result, Tensor};
+use tensor::{Result, Tensor};
 
 /// Minimal metadata exposed by a loaded model implementation.
 ///
@@ -39,8 +39,8 @@ pub struct ModelMetadata {
 /// # Example
 ///
 /// ```no_run
-/// use candle_core::{Result, Tensor};
 /// use model::{Model, ModelMetadata};
+/// use tensor::{Result, Tensor};
 ///
 /// struct Dummy;
 ///

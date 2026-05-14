@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use candle_core::{Device, Result, Tensor};
+use runtime::CudaContext;
+use tensor::{Result, Tensor};
 
 use crate::{
     Cacheable, LoadedModel, Model, ModelConfig, ModelMetadata, load_config, load_model, qwen3,
@@ -16,12 +17,12 @@ use crate::{
 /// # Example
 ///
 /// ```no_run
-/// use candle_core::Device;
 /// use model::AutoModelForCausalLM;
+/// use runtime::CudaContext;
 ///
 /// # fn main() -> anyhow::Result<()> {
-/// let device = Device::new_cuda(0)?;
-/// let loaded = AutoModelForCausalLM::load("Qwen/Qwen3-0.6B", None, &device)?;
+/// let context = CudaContext::new(0)?;
+/// let loaded = AutoModelForCausalLM::load("Qwen/Qwen3-0.6B", None, &context)?;
 /// assert_eq!(loaded.model.metadata().model_type, "qwen3");
 /// assert!(loaded.tokenizer_path.ends_with("tokenizer.json"));
 /// # Ok(())
@@ -54,12 +55,12 @@ impl<T> CausalLM for T where T: Model + Cacheable + Send {}
 /// # Example
 ///
 /// ```no_run
-/// use candle_core::Device;
 /// use model::AutoModelForCausalLM;
+/// use runtime::CudaContext;
 ///
 /// # fn main() -> anyhow::Result<()> {
-/// let device = Device::new_cuda(0)?;
-/// let loaded = AutoModelForCausalLM::load("/models/qwen3", None, &device)?;
+/// let context = CudaContext::new(0)?;
+/// let loaded = AutoModelForCausalLM::load("/models/qwen3", None, &context)?;
 /// let metadata = loaded.model.metadata();
 /// assert_eq!(metadata.model_type, "qwen3");
 /// # Ok(())
@@ -74,16 +75,16 @@ impl AutoModelForCausalLM {
     pub fn load(
         model: &str,
         revision: Option<&str>,
-        device: &Device,
+        context: &CudaContext,
     ) -> anyhow::Result<AutoLoadedModel> {
-        let loaded = load_model(model, revision, device)?;
+        let loaded = load_model(model, revision, context)?;
         Self::from_loaded(loaded)
     }
 
     /// Builds an auto model from already resolved checkpoint files.
     pub fn from_loaded(loaded: LoadedModel) -> anyhow::Result<AutoLoadedModel> {
         let config = load_config(&loaded.config_path)?;
-        let model = Self::from_config_path(&config, &loaded.config_path, loaded.var_builder)?;
+        let model = Self::from_config_path(&config, &loaded.config_path, loaded.weights)?;
         Ok(AutoLoadedModel {
             model,
             config_path: loaded.config_path,
@@ -97,13 +98,13 @@ impl AutoModelForCausalLM {
     pub fn from_config_path(
         config: &ModelConfig,
         config_path: &Path,
-        vb: candle_nn::VarBuilder<'static>,
+        weights: crate::WeightBuilder,
     ) -> anyhow::Result<Self> {
         match model_family(config).as_deref() {
             Some("qwen3") => {
                 let typed: qwen3::Config = serde_json::from_value(config.as_value()?)?;
                 Ok(Self {
-                    inner: Box::new(qwen3::ModelForCausalLM::new(&typed, vb)?),
+                    inner: Box::new(qwen3::ModelForCausalLM::new(&typed, weights)?),
                 })
             }
             Some(model_type) => anyhow::bail!("unsupported model architecture `{model_type}`"),

@@ -1,10 +1,11 @@
-use cudarc::driver::{CudaView, LaunchConfig, PushKernelArg};
+use cudarc::driver::{CudaView, CudaViewMut, LaunchConfig, PushKernelArg};
 use cudarc::nvrtc::Ptx;
 use tensor::{CudaBuf, DType, Result, Shape, SharedStorage, Stride, Tensor, TensorError};
 
 use crate::ptx;
 
 const MODULE_FUNCTION: &str = "qwen_fused_silu_mul_bf16";
+const TWO_INPUT_FUNCTION: &str = "qwen_silu_mul_bf16";
 
 /// Applies the Qwen-style fused SiLU-and-multiply MLP activation.
 ///
@@ -71,6 +72,68 @@ pub fn fused_silu_mul(gate_up: &Tensor, intermediate_size: usize) -> Result<Tens
     Ok(Tensor::from_storage(storage, shape, stride, DType::BF16))
 }
 
+/// Applies SiLU to `gate` and multiplies by `up` elementwise on CUDA.
+///
+/// This variant is used when gate and up projections are produced separately.
+/// Inputs must be contiguous CUDA BF16 tensors with identical shapes.
+///
+/// # Example
+///
+/// ```no_run
+/// use kernels::silu_mul;
+/// use runtime::CudaContext;
+/// use tensor::{DType, Shape, copy_h2d};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let context = CudaContext::new(0)?;
+/// let shape = Shape::new([1, 4])?;
+/// let gate = copy_h2d(&context, shape.clone(), DType::BF16, &[0u16; 4])?;
+/// let up = copy_h2d(&context, shape, DType::BF16, &[0u16; 4])?;
+/// let out = silu_mul(&gate, &up)?;
+/// assert_eq!(out.shape().dims(), &[1, 4]);
+/// # Ok(())
+/// # }
+/// ```
+pub fn silu_mul(gate: &Tensor, up: &Tensor) -> Result<Tensor> {
+    validate_dtype(gate, DType::BF16)?;
+    validate_dtype(up, DType::BF16)?;
+    validate_contiguous(gate)?;
+    validate_contiguous(up)?;
+    if gate.shape().dims() != up.shape().dims() {
+        return Err(TensorError::ShapeMismatch(format!(
+            "silu_mul expected matching shapes, got {:?} and {:?}",
+            gate.shape().dims(),
+            up.shape().dims()
+        )));
+    }
+    let stream = gate.storage().buffer().as_slice().stream();
+    let mut out = unsafe { stream.alloc::<u8>(gate.len_bytes())? };
+    let gate_view = bf16_view(gate)?;
+    let up_view = bf16_view(up)?;
+    let mut out_view = bf16_mut_view(&mut out, gate.numel(), "silu_mul output")?;
+    let module = stream
+        .context()
+        .load_module(Ptx::from_src(ptx::ACTIVATION_FUSED_SILU_MUL))?;
+    let func = module.load_function(TWO_INPUT_FUNCTION)?;
+    let total_elements = to_i32(gate.numel(), "total_elements")?;
+    let mut builder = stream.launch_builder(&func);
+    builder.arg(&gate_view);
+    builder.arg(&up_view);
+    builder.arg(&mut out_view);
+    builder.arg(&total_elements);
+    unsafe {
+        builder.launch(LaunchConfig {
+            grid_dim: (to_u32(gate.numel().div_ceil(256), "grid_x")?, 1, 1),
+            block_dim: (256, 1, 1),
+            shared_mem_bytes: 0,
+        })?;
+    }
+    let shape = gate.shape().clone();
+    let stride = Stride::contiguous(&shape);
+    let storage = SharedStorage::new(CudaBuf::from_slice(out));
+    Ok(Tensor::from_storage(storage, shape, stride, DType::BF16))
+}
+
 fn validate_dtype(tensor: &Tensor, expected: DType) -> Result<()> {
     if tensor.dtype() != expected {
         return Err(TensorError::DTypeMismatch {
@@ -97,6 +160,16 @@ fn bf16_view(tensor: &Tensor) -> Result<CudaView<'_, u16>> {
             .transmute::<u16>(tensor.numel())
     }
     .ok_or_else(|| TensorError::InvalidArgument("failed to create BF16 tensor view".to_string()))
+}
+
+fn bf16_mut_view<'a>(
+    out: &'a mut cudarc::driver::CudaSlice<u8>,
+    numel: usize,
+    name: &str,
+) -> Result<CudaViewMut<'a, u16>> {
+    unsafe { out.transmute_mut::<u16>(numel) }.ok_or_else(|| {
+        TensorError::InvalidArgument(format!("failed to create BF16 {name} view"))
+    })
 }
 
 fn to_i32(value: usize, name: &str) -> Result<i32> {

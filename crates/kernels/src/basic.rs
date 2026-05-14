@@ -8,10 +8,13 @@ use tensor::{CudaBuf, DType, Result, Shape, SharedStorage, Stride, Tensor, Tenso
 use crate::ptx;
 
 const ADD_BIAS_BF16: &str = "add_bias_bf16";
+const ADD_BF16: &str = "add_bf16";
 const LINEAR_BF16: &str = "linear_bf16";
 const EMBEDDING_LOOKUP_I32_BF16: &str = "embedding_lookup_i32_bf16";
 const ZERO_F32: &str = "zero_f32";
 const CONCAT_DIM2_BF16: &str = "concat_dim2_bf16";
+const TRANSPOSE_1_2_BF16: &str = "transpose_1_2_bf16";
+const NARROW_DIM1_BF16: &str = "narrow_dim1_bf16";
 
 pub fn add_bias(x: &Tensor, bias: &Tensor) -> Result<Tensor> {
     validate_bf16_contiguous(x)?;
@@ -40,6 +43,52 @@ pub fn add_bias(x: &Tensor, bias: &Tensor) -> Result<Tensor> {
     builder.arg(&cols);
     launch_1d(&mut builder, x.numel())?;
     output_like(x, out)
+}
+
+/// Adds two contiguous CUDA BF16 tensors with the same shape.
+///
+/// # Example
+///
+/// ```no_run
+/// use kernels::add;
+/// use runtime::CudaContext;
+/// use tensor::{DType, Shape, copy_h2d};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let context = CudaContext::new(0)?;
+/// let shape = Shape::new([2])?;
+/// let left = copy_h2d(&context, shape.clone(), DType::BF16, &[0u16; 2])?;
+/// let right = copy_h2d(&context, shape, DType::BF16, &[0u16; 2])?;
+/// let out = add(&left, &right)?;
+/// assert_eq!(out.shape().dims(), &[2]);
+/// # Ok(())
+/// # }
+/// ```
+pub fn add(left: &Tensor, right: &Tensor) -> Result<Tensor> {
+    validate_bf16_contiguous(left)?;
+    validate_bf16_contiguous(right)?;
+    if left.shape().dims() != right.shape().dims() {
+        return Err(TensorError::ShapeMismatch(format!(
+            "add expected matching shapes, got {:?} and {:?}",
+            left.shape().dims(),
+            right.shape().dims()
+        )));
+    }
+    let stream = left.storage().buffer().as_slice().stream();
+    let mut out = unsafe { stream.alloc::<u8>(left.len_bytes())? };
+    let left_view = bf16_view(left)?;
+    let right_view = bf16_view(right)?;
+    let mut out_view = bf16_mut_view(&mut out, left.numel(), "add output")?;
+    let module = stream.context().load_module(Ptx::from_src(ptx::BASIC))?;
+    let func = module.load_function(ADD_BF16)?;
+    let total_elements = to_i32(left.numel(), "total_elements")?;
+    let mut builder = stream.launch_builder(&func);
+    builder.arg(&left_view);
+    builder.arg(&right_view);
+    builder.arg(&mut out_view);
+    builder.arg(&total_elements);
+    launch_1d(&mut builder, left.numel())?;
+    output_like(left, out)
 }
 
 pub fn linear(x: &Tensor, weight: &Tensor, bias: Option<&Tensor>) -> Result<Tensor> {
@@ -228,6 +277,123 @@ pub fn concat_dim2(left: &Tensor, right: &Tensor) -> Result<Tensor> {
     builder.arg(&left_seq);
     builder.arg(&right_seq);
     builder.arg(&head_dim);
+    launch_1d(&mut builder, out_shape.numel())?;
+    let storage = SharedStorage::new(CudaBuf::from_slice(out));
+    Ok(Tensor::from_storage(
+        storage,
+        out_shape.clone(),
+        Stride::contiguous(&out_shape),
+        DType::BF16,
+    ))
+}
+
+/// Transposes dimensions 1 and 2 of a rank-4 contiguous CUDA BF16 tensor.
+///
+/// # Example
+///
+/// ```no_run
+/// use kernels::transpose_1_2;
+/// use runtime::CudaContext;
+/// use tensor::{DType, Shape, copy_h2d};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let context = CudaContext::new(0)?;
+/// let x = copy_h2d(&context, Shape::new([1, 2, 3, 4])?, DType::BF16, &[0u16; 24])?;
+/// let y = transpose_1_2(&x)?;
+/// assert_eq!(y.shape().dims(), &[1, 3, 2, 4]);
+/// # Ok(())
+/// # }
+/// ```
+pub fn transpose_1_2(input: &Tensor) -> Result<Tensor> {
+    validate_bf16_contiguous(input)?;
+    let dims = dims4(input, "input")?;
+    let out_shape = Shape::new([dims[0], dims[2], dims[1], dims[3]])
+        .map_err(|err| TensorError::ShapeMismatch(err.to_string()))?;
+    let stream = input.storage().buffer().as_slice().stream();
+    let mut out = unsafe { stream.alloc::<u8>(input.len_bytes())? };
+    let input_view = bf16_view(input)?;
+    let mut out_view = bf16_mut_view(&mut out, input.numel(), "transpose output")?;
+    let module = stream.context().load_module(Ptx::from_src(ptx::BASIC))?;
+    let func = module.load_function(TRANSPOSE_1_2_BF16)?;
+    let batch = to_i32(dims[0], "batch")?;
+    let dim1 = to_i32(dims[1], "dim1")?;
+    let dim2 = to_i32(dims[2], "dim2")?;
+    let dim3 = to_i32(dims[3], "dim3")?;
+    let total_elements = to_i32(input.numel(), "total_elements")?;
+    let mut builder = stream.launch_builder(&func);
+    builder.arg(&input_view);
+    builder.arg(&mut out_view);
+    builder.arg(&batch);
+    builder.arg(&dim1);
+    builder.arg(&dim2);
+    builder.arg(&dim3);
+    builder.arg(&total_elements);
+    launch_1d(&mut builder, input.numel())?;
+    let storage = SharedStorage::new(CudaBuf::from_slice(out));
+    Ok(Tensor::from_storage(
+        storage,
+        out_shape.clone(),
+        Stride::contiguous(&out_shape),
+        DType::BF16,
+    ))
+}
+
+/// Copies a contiguous dimension-1 slice from a rank-3 CUDA BF16 tensor.
+///
+/// # Example
+///
+/// ```no_run
+/// use kernels::narrow_dim1;
+/// use runtime::CudaContext;
+/// use tensor::{DType, Shape, copy_h2d};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let context = CudaContext::new(0)?;
+/// let x = copy_h2d(&context, Shape::new([1, 2, 4])?, DType::BF16, &[0u16; 8])?;
+/// let y = narrow_dim1(&x, 1, 1)?;
+/// assert_eq!(y.shape().dims(), &[1, 1, 4]);
+/// # Ok(())
+/// # }
+/// ```
+pub fn narrow_dim1(input: &Tensor, start: usize, len: usize) -> Result<Tensor> {
+    validate_bf16_contiguous(input)?;
+    let dims = input.shape().dims();
+    if dims.len() != 3 {
+        return Err(TensorError::ShapeMismatch(format!(
+            "narrow_dim1 input must be rank 3, got rank {}",
+            dims.len()
+        )));
+    }
+    if start.checked_add(len).is_none_or(|end| end > dims[1]) {
+        return Err(TensorError::InvalidArgument(format!(
+            "narrow_dim1 range [{start}, {}) exceeds dim {}",
+            start + len,
+            dims[1]
+        )));
+    }
+    let out_shape = Shape::new([dims[0], len, dims[2]])
+        .map_err(|err| TensorError::ShapeMismatch(err.to_string()))?;
+    let stream = input.storage().buffer().as_slice().stream();
+    let mut out = unsafe { stream.alloc::<u8>(out_shape.numel() * DType::BF16.size_in_bytes())? };
+    let input_view = bf16_view(input)?;
+    let mut out_view = bf16_mut_view(&mut out, out_shape.numel(), "narrow output")?;
+    let module = stream.context().load_module(Ptx::from_src(ptx::BASIC))?;
+    let func = module.load_function(NARROW_DIM1_BF16)?;
+    let batch = to_i32(dims[0], "batch")?;
+    let dim1 = to_i32(dims[1], "dim1")?;
+    let width = to_i32(dims[2], "width")?;
+    let start = to_i32(start, "start")?;
+    let len_i32 = to_i32(len, "len")?;
+    let total_elements = to_i32(out_shape.numel(), "total_elements")?;
+    let mut builder = stream.launch_builder(&func);
+    builder.arg(&input_view);
+    builder.arg(&mut out_view);
+    builder.arg(&batch);
+    builder.arg(&dim1);
+    builder.arg(&width);
+    builder.arg(&start);
+    builder.arg(&len_i32);
+    builder.arg(&total_elements);
     launch_1d(&mut builder, out_shape.numel())?;
     let storage = SharedStorage::new(CudaBuf::from_slice(out));
     Ok(Tensor::from_storage(

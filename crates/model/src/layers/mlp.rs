@@ -1,10 +1,14 @@
-use candle_core::{D, Result, Tensor};
-use candle_nn::{Linear, Module, VarBuilder, linear_no_bias};
+use ops::{LinearConfig, LinearOp, silu_mul};
+use tensor::{Result, Tensor};
+
+use crate::WeightBuilder;
 
 /// Configuration for the Qwen-style gated SiLU MLP.
 ///
-/// The MLP uses fused `gate_proj` and `up_proj` weights followed by SiLU gate
-/// multiplication and a final `down_proj`.
+/// The MLP uses separate CUDA BF16 gate/up/down projections followed by a fused
+/// SiLU-multiply kernel. Keeping gate and up separate avoids host-side weight
+/// concatenation while the model crate is being migrated off external tensor
+/// frameworks.
 ///
 /// # Example
 ///
@@ -22,63 +26,89 @@ pub struct GatedSiluMlpConfig {
     pub intermediate_size: usize,
 }
 
-/// Qwen-style SwiGLU MLP layer.
+/// Qwen-style SwiGLU MLP layer backed only by CUDA kernels.
 ///
 /// # Example
 ///
 /// ```no_run
-/// use candle_core::{DType, Device, Tensor};
-/// use candle_nn::VarBuilder;
-/// use model::{GatedSiluMlp, GatedSiluMlpConfig};
+/// use std::collections::HashMap;
+/// use model::{GatedSiluMlp, GatedSiluMlpConfig, WeightBuilder};
+/// use runtime::CudaContext;
 ///
-/// # fn main() -> candle_core::Result<()> {
-/// let device = Device::new_cuda(0)?;
-/// let tensors = std::collections::HashMap::new();
-/// let vb = VarBuilder::from_tensors(tensors, DType::BF16, &device);
-/// let mlp = GatedSiluMlp::new(GatedSiluMlpConfig { hidden_size: 128, intermediate_size: 256 }, vb)?;
-/// let x = Tensor::zeros((1, 1, 128), DType::BF16, &device)?;
-/// let _y = mlp.forward(&x)?;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let context = CudaContext::new(0)?;
+/// let weights = WeightBuilder::new(context, HashMap::new());
+/// let config = GatedSiluMlpConfig { hidden_size: 128, intermediate_size: 256 };
+/// assert!(GatedSiluMlp::new(config, weights).is_err());
 /// # Ok(())
 /// # }
 /// ```
 pub struct GatedSiluMlp {
-    gate_up_proj: Linear,
-    down_proj: Linear,
-    intermediate_size: usize,
+    gate_proj: LinearOp,
+    up_proj: LinearOp,
+    down_proj: LinearOp,
 }
 
 impl GatedSiluMlp {
-    /// Builds the MLP from checkpoint variables.
-    pub fn new(config: GatedSiluMlpConfig, vb: VarBuilder) -> Result<Self> {
-        let gate_proj = linear_no_bias(
-            config.hidden_size,
-            config.intermediate_size,
-            vb.pp("gate_proj"),
-        )?;
-        let up_proj = linear_no_bias(
-            config.hidden_size,
-            config.intermediate_size,
-            vb.pp("up_proj"),
-        )?;
-        let gate_up = Tensor::cat(&[gate_proj.weight(), up_proj.weight()], 0)?;
-        let down_proj = linear_no_bias(
-            config.intermediate_size,
-            config.hidden_size,
-            vb.pp("down_proj"),
-        )?;
+    /// Builds the MLP from CUDA BF16 checkpoint variables.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use std::collections::HashMap;
+    /// use model::{GatedSiluMlp, GatedSiluMlpConfig, WeightBuilder};
+    /// use runtime::CudaContext;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let context = CudaContext::new(0)?;
+    /// let weights = WeightBuilder::new(context, HashMap::new());
+    /// let config = GatedSiluMlpConfig { hidden_size: 128, intermediate_size: 256 };
+    /// assert!(GatedSiluMlp::new(config, weights).is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn new(config: GatedSiluMlpConfig, weights: WeightBuilder) -> Result<Self> {
+        let linear_config = |out_features| LinearConfig {
+            in_features: config.hidden_size,
+            out_features,
+            bias: false,
+        };
+        let down_config = LinearConfig {
+            in_features: config.intermediate_size,
+            out_features: config.hidden_size,
+            bias: false,
+        };
         Ok(Self {
-            gate_up_proj: Linear::new(gate_up, None),
-            down_proj,
-            intermediate_size: config.intermediate_size,
+            gate_proj: LinearOp::new(
+                linear_config(config.intermediate_size),
+                weights.get("gate_proj.weight")?,
+                None,
+            )?,
+            up_proj: LinearOp::new(
+                linear_config(config.intermediate_size),
+                weights.get("up_proj.weight")?,
+                None,
+            )?,
+            down_proj: LinearOp::new(down_config, weights.get("down_proj.weight")?, None)?,
         })
     }
 
     /// Applies the MLP to hidden states shaped `[..., hidden_size]`.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use model::GatedSiluMlp;
+    /// # use tensor::Tensor;
+    /// # fn run(mlp: &GatedSiluMlp, x: &Tensor) -> tensor::Result<Tensor> {
+    /// let y = mlp.forward(x)?;
+    /// # Ok(y)
+    /// # }
+    /// ```
     pub fn forward(&self, x: &Tensor) -> Result<Tensor> {
-        let gate_up = self.gate_up_proj.forward(x)?.contiguous()?;
-        let gate = gate_up.narrow(D::Minus1, 0, self.intermediate_size)?;
-        let up = gate_up.narrow(D::Minus1, self.intermediate_size, self.intermediate_size)?;
-        let activated = (gate.silu()? * up)?;
+        let gate = self.gate_proj.forward(x)?;
+        let up = self.up_proj.forward(x)?;
+        let activated = silu_mul(&gate, &up)?;
         self.down_proj.forward(&activated)
     }
 }

@@ -1,8 +1,8 @@
-use candle_core::{DType, Device, Module, Result, Tensor};
-use candle_nn::{Linear, RmsNorm, VarBuilder};
-use ops::{AttentionContext, LmHead, RotaryEmbedding, TokenEmbedding};
+use ops::{narrow_dim1, AttentionContext, LmHead, RmsNormConfig, RmsNormOp, RotaryEmbedding, TokenEmbedding};
 use serde::Deserialize;
+use tensor::{DType, Result, Tensor, TensorError};
 
+use crate::WeightBuilder;
 use crate::layers::{AttentionConfig, DecoderLayer, DecoderLayerConfig, GatedSiluMlpConfig};
 use crate::traits::{Cacheable, Model, ModelMetadata};
 
@@ -20,23 +20,12 @@ fn default_max_position_embeddings() -> usize {
 
 /// Typed Qwen3 architecture configuration.
 ///
-/// The shared `ModelConfig` keeps unknown JSON fields intact, then this type
-/// performs the Qwen3-specific deserialization used by the model builder.
-///
 /// # Example
 ///
 /// ```
 /// use model::qwen3::Config;
 ///
-/// let json = r#"{
-///   "vocab_size": 32000,
-///   "hidden_size": 128,
-///   "intermediate_size": 256,
-///   "num_hidden_layers": 2,
-///   "num_attention_heads": 4,
-///   "num_key_value_heads": 2,
-///   "rms_norm_eps": 0.000001
-/// }"#;
+/// let json = r#"{"vocab_size":32000,"hidden_size":128,"intermediate_size":256,"num_hidden_layers":2,"num_attention_heads":4,"num_key_value_heads":2,"rms_norm_eps":0.000001}"#;
 /// let config: Config = serde_json::from_str(json).unwrap();
 /// assert_eq!(config.head_dim(), 32);
 /// assert!(config.tie_word_embeddings);
@@ -123,34 +112,21 @@ impl Config {
     }
 }
 
-/// Qwen3 causal language model.
-///
-/// This type owns token embeddings, decoder layers, final norm, LM head, and
-/// RoPE tables. It implements both `Model` and `Cacheable` so the engine can
-/// run prompt prefill followed by decode steps without depending on concrete
-/// Qwen3 internals.
+/// Qwen3 causal language model backed by local CUDA tensor and kernel crates.
 ///
 /// # Example
 ///
 /// ```no_run
-/// use candle_core::{DType, Device};
-/// use candle_nn::VarBuilder;
+/// use std::collections::HashMap;
 /// use model::qwen3::{Config, ModelForCausalLM};
+/// use model::WeightBuilder;
+/// use runtime::CudaContext;
 ///
-/// # fn main() -> candle_core::Result<()> {
-/// let device = Device::new_cuda(0)?;
-/// let tensors = std::collections::HashMap::new();
-/// let vb = VarBuilder::from_tensors(tensors, DType::BF16, &device);
-/// let config: Config = serde_json::from_str(r#"{
-///   "vocab_size": 32000,
-///   "hidden_size": 128,
-///   "intermediate_size": 256,
-///   "num_hidden_layers": 2,
-///   "num_attention_heads": 4,
-///   "num_key_value_heads": 2,
-///   "rms_norm_eps": 0.000001
-/// }"#).unwrap();
-/// let _model = ModelForCausalLM::new(&config, vb)?;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let context = CudaContext::new(0)?;
+/// let weights = WeightBuilder::new(context, HashMap::new());
+/// let config: Config = serde_json::from_str(r#"{"vocab_size":8,"hidden_size":64,"intermediate_size":128,"num_hidden_layers":1,"num_attention_heads":4,"num_key_value_heads":2,"rms_norm_eps":1e-6}"#).unwrap();
+/// assert!(ModelForCausalLM::new(&config, weights).is_err());
 /// # Ok(())
 /// # }
 /// ```
@@ -158,64 +134,64 @@ pub struct ModelForCausalLM {
     config: Config,
     embed_tokens: TokenEmbedding,
     layers: Vec<DecoderLayer>,
-    norm: RmsNorm,
+    norm: RmsNormOp,
     lm_head: LmHead,
     rotary: RotaryEmbedding,
 }
 
 impl ModelForCausalLM {
-    /// Builds a Qwen3 model from checkpoint variables.
+    /// Builds a Qwen3 model from CUDA BF16 checkpoint variables.
     ///
     /// # Example
     ///
     /// ```no_run
-    /// use candle_core::{DType, Device};
-    /// use candle_nn::VarBuilder;
-    /// use model::qwen3::{Config, ModelForCausalLM};
-    ///
-    /// # fn main() -> candle_core::Result<()> {
-    /// let device = Device::new_cuda(0)?;
-    /// let tensors = std::collections::HashMap::new();
-    /// let vb = VarBuilder::from_tensors(tensors, DType::BF16, &device);
+    /// # use std::collections::HashMap;
+    /// # use model::qwen3::{Config, ModelForCausalLM};
+    /// # use model::WeightBuilder;
+    /// # use runtime::CudaContext;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let context = CudaContext::new(0)?;
+    /// let weights = WeightBuilder::new(context, HashMap::new());
     /// let config: Config = serde_json::from_str(r#"{"vocab_size":8,"hidden_size":64,"intermediate_size":128,"num_hidden_layers":1,"num_attention_heads":4,"num_key_value_heads":2,"rms_norm_eps":1e-6}"#).unwrap();
-    /// let _model = ModelForCausalLM::new(&config, vb)?;
+    /// assert!(ModelForCausalLM::new(&config, weights).is_err());
     /// # Ok(())
     /// # }
     /// ```
-    pub fn new(config: &Config, vb: VarBuilder) -> Result<Self> {
-        if !vb.device().is_cuda() {
-            candle_core::bail!("qwen3 is CUDA-only");
-        }
-        if vb.dtype() != DType::BF16 {
-            candle_core::bail!("qwen3 is BF16-only");
-        }
-        let model_vb = vb.pp("model");
+    pub fn new(config: &Config, weights: WeightBuilder) -> Result<Self> {
+        let model_weights = weights.pp("model");
         let embed_tokens = TokenEmbedding::new(
             config.vocab_size,
             config.hidden_size,
-            model_vb.pp("embed_tokens"),
+            model_weights.get("embed_tokens.weight")?,
         )?;
         let mut layers = Vec::with_capacity(config.num_hidden_layers);
-        let layers_vb = model_vb.pp("layers");
+        let layers_weights = model_weights.pp("layers");
         let layer_config = config.decoder_layer_config();
         for idx in 0..config.num_hidden_layers {
-            layers.push(DecoderLayer::new(layer_config.clone(), layers_vb.pp(idx))?);
+            layers.push(DecoderLayer::new(layer_config.clone(), layers_weights.pp(idx))?);
         }
-        let norm =
-            candle_nn::rms_norm(config.hidden_size, config.rms_norm_eps, model_vb.pp("norm"))?;
+        let norm = RmsNormOp::new(
+            RmsNormConfig {
+                hidden_size: config.hidden_size,
+                eps: config.rms_norm_eps,
+            },
+            model_weights.get("norm.weight")?,
+        )?;
         let lm_head = if config.tie_word_embeddings {
             LmHead::tied(embed_tokens.embeddings())
         } else {
-            let linear =
-                candle_nn::linear_no_bias(config.hidden_size, config.vocab_size, vb.pp("lm_head"))?;
-            LmHead::from_linear(Linear::new(linear.weight().clone(), None))
+            LmHead::new(
+                config.hidden_size,
+                config.vocab_size,
+                weights.get("lm_head.weight")?,
+            )?
         };
         let rotary = RotaryEmbedding::new(
             config.head_dim(),
             config.max_position_embeddings,
             config.rope_theta,
             DType::BF16,
-            vb.device(),
+            weights.context(),
         )?;
         Ok(Self {
             config: config.clone(),
@@ -232,27 +208,28 @@ impl ModelForCausalLM {
     /// # Example
     ///
     /// ```no_run
-    /// use candle_core::{DType, Device, Tensor};
-    /// use candle_nn::VarBuilder;
-    /// use model::qwen3::{Config, ModelForCausalLM};
-    ///
-    /// # fn main() -> candle_core::Result<()> {
-    /// let device = Device::new_cuda(0)?;
-    /// let tensors = std::collections::HashMap::new();
-    /// let vb = VarBuilder::from_tensors(tensors, DType::BF16, &device);
-    /// let config: Config = serde_json::from_str(r#"{"vocab_size":8,"hidden_size":64,"intermediate_size":128,"num_hidden_layers":1,"num_attention_heads":4,"num_key_value_heads":2,"rms_norm_eps":1e-6}"#).unwrap();
-    /// let mut model = ModelForCausalLM::new(&config, vb)?;
-    /// let input_ids = Tensor::new(&[[1u32, 2u32]], &device)?;
-    /// let _logits = model.forward(&input_ids, 0)?;
-    /// # Ok(())
+    /// # use model::qwen3::ModelForCausalLM;
+    /// # use tensor::Tensor;
+    /// # fn run(model: &mut ModelForCausalLM, input_ids: &Tensor) -> tensor::Result<Tensor> {
+    /// let logits = model.forward(input_ids, 0)?;
+    /// # Ok(logits)
     /// # }
     /// ```
     pub fn forward(&mut self, input_ids: &Tensor, start_pos: usize) -> Result<Tensor> {
-        if !input_ids.device().is_cuda() {
-            candle_core::bail!("qwen3 forward requires CUDA input ids");
+        if input_ids.dtype() != DType::I32 {
+            return Err(TensorError::DTypeMismatch {
+                expected: DType::I32.name(),
+                actual: input_ids.dtype().name(),
+            });
         }
-        let _guard = EventTrackingGuard::disable(input_ids.device());
-        let (_b_sz, seq_len) = input_ids.dims2()?;
+        let dims = input_ids.shape().dims();
+        if dims.len() != 2 {
+            return Err(TensorError::ShapeMismatch(format!(
+                "qwen3 input ids must be rank 2, got rank {}",
+                dims.len()
+            )));
+        }
+        let seq_len = dims[1];
         let total_len = start_pos + seq_len;
         let (cos, sin) = self.rotary.get(total_len, start_pos, seq_len)?;
         let mut x = self.embed_tokens.forward(input_ids)?;
@@ -265,7 +242,7 @@ impl ModelForCausalLM {
             x = layer.forward(&x, &cos, &sin, context)?;
         }
         let x = self.norm.forward(&x)?;
-        self.lm_head.forward(&x.narrow(1, seq_len - 1, 1)?)
+        self.lm_head.forward(&narrow_dim1(&x, seq_len - 1, 1)?)
     }
 
     /// Clears cached key/value tensors for every decoder layer.
@@ -273,17 +250,9 @@ impl ModelForCausalLM {
     /// # Example
     ///
     /// ```no_run
-    /// # use candle_core::{DType, Device};
-    /// # use candle_nn::VarBuilder;
-    /// # use model::qwen3::{Config, ModelForCausalLM};
-    /// # fn main() -> candle_core::Result<()> {
-    /// # let device = Device::new_cuda(0)?;
-    /// # let tensors = std::collections::HashMap::new();
-    /// # let vb = VarBuilder::from_tensors(tensors, DType::BF16, &device);
-    /// # let config: Config = serde_json::from_str(r#"{"vocab_size":8,"hidden_size":64,"intermediate_size":128,"num_hidden_layers":1,"num_attention_heads":4,"num_key_value_heads":2,"rms_norm_eps":1e-6}"#).unwrap();
-    /// let mut model = ModelForCausalLM::new(&config, vb)?;
+    /// # use model::qwen3::ModelForCausalLM;
+    /// # fn clear(model: &mut ModelForCausalLM) {
     /// model.clear_kv_cache();
-    /// # Ok(())
     /// # }
     /// ```
     pub fn clear_kv_cache(&mut self) {
@@ -311,18 +280,5 @@ impl Cacheable for ModelForCausalLM {
         for layer in &mut self.layers {
             layer.clear_kv_cache();
         }
-    }
-}
-
-struct EventTrackingGuard;
-
-impl EventTrackingGuard {
-    fn disable(device: &Device) -> Self {
-        if let Device::Cuda(dev) = device {
-            if dev.is_event_tracking() {
-                unsafe { dev.disable_event_tracking() };
-            }
-        }
-        Self
     }
 }

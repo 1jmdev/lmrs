@@ -1,7 +1,7 @@
-use candle_core::{Result, Tensor};
-use candle_nn::{Module, RmsNorm, VarBuilder};
-use ops::AttentionContext;
+use ops::{add, AttentionContext, RmsNormConfig, RmsNormOp};
+use tensor::{Result, Tensor};
 
+use crate::WeightBuilder;
 use crate::layers::{Attention, AttentionConfig, GatedSiluMlp, GatedSiluMlpConfig};
 
 /// Configuration for one decoder transformer block.
@@ -12,14 +12,7 @@ use crate::layers::{Attention, AttentionConfig, GatedSiluMlp, GatedSiluMlpConfig
 /// use model::{AttentionConfig, DecoderLayerConfig, GatedSiluMlpConfig};
 ///
 /// let config = DecoderLayerConfig {
-///     attention: AttentionConfig {
-///         hidden_size: 128,
-///         num_heads: 4,
-///         num_kv_heads: 2,
-///         head_dim: 32,
-///         attention_bias: false,
-///         qk_norm_eps: Some(1e-6),
-///     },
+///     attention: AttentionConfig { hidden_size: 128, num_heads: 4, num_kv_heads: 2, head_dim: 32, attention_bias: false, qk_norm_eps: Some(1e-6) },
 ///     mlp: GatedSiluMlpConfig { hidden_size: 128, intermediate_size: 256 },
 ///     hidden_size: 128,
 ///     rms_norm_eps: 1e-6,
@@ -43,56 +36,84 @@ pub struct DecoderLayerConfig {
 /// # Example
 ///
 /// ```no_run
-/// use candle_core::{DType, Device, Tensor};
-/// use candle_nn::VarBuilder;
-/// use model::{AttentionConfig, DecoderLayer, DecoderLayerConfig, GatedSiluMlpConfig};
-/// use ops::AttentionContext;
+/// use std::collections::HashMap;
+/// use model::{AttentionConfig, DecoderLayer, DecoderLayerConfig, GatedSiluMlpConfig, WeightBuilder};
+/// use runtime::CudaContext;
 ///
-/// # fn main() -> candle_core::Result<()> {
-/// let device = Device::new_cuda(0)?;
-/// let tensors = std::collections::HashMap::new();
-/// let vb = VarBuilder::from_tensors(tensors, DType::BF16, &device);
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let context = CudaContext::new(0)?;
+/// let weights = WeightBuilder::new(context, HashMap::new());
 /// let config = DecoderLayerConfig {
 ///     attention: AttentionConfig { hidden_size: 128, num_heads: 4, num_kv_heads: 2, head_dim: 32, attention_bias: false, qk_norm_eps: Some(1e-6) },
 ///     mlp: GatedSiluMlpConfig { hidden_size: 128, intermediate_size: 256 },
 ///     hidden_size: 128,
 ///     rms_norm_eps: 1e-6,
 /// };
-/// let mut layer = DecoderLayer::new(config, vb)?;
-/// let x = Tensor::zeros((1, 1, 128), DType::BF16, &device)?;
-/// let cos = Tensor::zeros((1, 16), DType::BF16, &device)?;
-/// let sin = Tensor::zeros((1, 16), DType::BF16, &device)?;
-/// let _y = layer.forward(&x, &cos, &sin, AttentionContext::Prefill)?;
+/// assert!(DecoderLayer::new(config, weights).is_err());
 /// # Ok(())
 /// # }
 /// ```
 pub struct DecoderLayer {
     self_attn: Attention,
     mlp: GatedSiluMlp,
-    input_layernorm: RmsNorm,
-    post_attention_layernorm: RmsNorm,
+    input_layernorm: RmsNormOp,
+    post_attention_layernorm: RmsNormOp,
 }
 
 impl DecoderLayer {
-    /// Builds a decoder layer from checkpoint variables.
-    pub fn new(config: DecoderLayerConfig, vb: VarBuilder) -> Result<Self> {
+    /// Builds a decoder layer from CUDA BF16 checkpoint variables.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use std::collections::HashMap;
+    /// # use model::{AttentionConfig, DecoderLayer, DecoderLayerConfig, GatedSiluMlpConfig, WeightBuilder};
+    /// # use runtime::CudaContext;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let context = CudaContext::new(0)?;
+    /// let weights = WeightBuilder::new(context, HashMap::new());
+    /// let config = DecoderLayerConfig {
+    ///     attention: AttentionConfig { hidden_size: 128, num_heads: 4, num_kv_heads: 2, head_dim: 32, attention_bias: false, qk_norm_eps: None },
+    ///     mlp: GatedSiluMlpConfig { hidden_size: 128, intermediate_size: 256 },
+    ///     hidden_size: 128,
+    ///     rms_norm_eps: 1e-6,
+    /// };
+    /// assert!(DecoderLayer::new(config, weights).is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn new(config: DecoderLayerConfig, weights: WeightBuilder) -> Result<Self> {
+        let norm_config = RmsNormConfig {
+            hidden_size: config.hidden_size,
+            eps: config.rms_norm_eps,
+        };
         Ok(Self {
-            self_attn: Attention::new(config.attention, vb.pp("self_attn"))?,
-            mlp: GatedSiluMlp::new(config.mlp, vb.pp("mlp"))?,
-            input_layernorm: candle_nn::rms_norm(
-                config.hidden_size,
-                config.rms_norm_eps,
-                vb.pp("input_layernorm"),
+            self_attn: Attention::new(config.attention, weights.pp("self_attn"))?,
+            mlp: GatedSiluMlp::new(config.mlp, weights.pp("mlp"))?,
+            input_layernorm: RmsNormOp::new(
+                norm_config,
+                weights.get("input_layernorm.weight")?,
             )?,
-            post_attention_layernorm: candle_nn::rms_norm(
-                config.hidden_size,
-                config.rms_norm_eps,
-                vb.pp("post_attention_layernorm"),
+            post_attention_layernorm: RmsNormOp::new(
+                norm_config,
+                weights.get("post_attention_layernorm.weight")?,
             )?,
         })
     }
 
     /// Runs a block forward pass for either prefill or decode attention context.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use model::DecoderLayer;
+    /// # use ops::AttentionContext;
+    /// # use tensor::Tensor;
+    /// # fn run(layer: &mut DecoderLayer, x: &Tensor, cos: &Tensor, sin: &Tensor) -> tensor::Result<Tensor> {
+    /// let y = layer.forward(x, cos, sin, AttentionContext::Prefill)?;
+    /// # Ok(y)
+    /// # }
+    /// ```
     pub fn forward(
         &mut self,
         x: &Tensor,
@@ -100,17 +121,24 @@ impl DecoderLayer {
         sin: &Tensor,
         context: AttentionContext,
     ) -> Result<Tensor> {
-        let residual = x;
         let y = self.input_layernorm.forward(x)?;
         let y = self.self_attn.forward(&y, cos, sin, context)?;
-        let x = (residual + y)?;
-        let residual = &x;
+        let x = add(x, &y)?;
         let y = self.post_attention_layernorm.forward(&x)?;
         let y = self.mlp.forward(&y)?;
-        residual + y
+        add(&x, &y)
     }
 
     /// Clears the block's attention cache.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use model::DecoderLayer;
+    /// # fn clear(layer: &mut DecoderLayer) {
+    /// layer.clear_kv_cache();
+    /// # }
+    /// ```
     pub fn clear_kv_cache(&mut self) {
         self.self_attn.clear_kv_cache();
     }

@@ -4,6 +4,7 @@ pub mod embedding;
 pub mod linear;
 pub mod norm;
 pub mod pos_embed;
+pub mod tensor;
 
 pub use activation::*;
 pub use attention::*;
@@ -11,3 +12,4 @@ pub use embedding::*;
 pub use linear::*;
 pub use norm::*;
 pub use pos_embed::*;
+pub use tensor::*;

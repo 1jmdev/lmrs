@@ -14,6 +14,17 @@ extern "C" __global__ void add_bias_bf16(
     out[idx] = __float2bfloat16(__bfloat162float(x[idx]) + __bfloat162float(bias[col]));
 }
 
+extern "C" __global__ void add_bf16(
+    const __nv_bfloat16 *__restrict__ left,
+    const __nv_bfloat16 *__restrict__ right,
+    __nv_bfloat16 *__restrict__ out,
+    const int total_elements
+) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total_elements) return;
+    out[idx] = __float2bfloat16(__bfloat162float(left[idx]) + __bfloat162float(right[idx]));
+}
+
 extern "C" __global__ void linear_bf16(
     const __nv_bfloat16 *__restrict__ x,
     const __nv_bfloat16 *__restrict__ weight,
@@ -83,4 +94,45 @@ extern "C" __global__ void concat_dim2_bf16(
     } else {
         out[idx] = right[((b * heads + h) * right_seq + (s - left_seq)) * head_dim + d];
     }
+}
+
+extern "C" __global__ void transpose_1_2_bf16(
+    const __nv_bfloat16 *__restrict__ input,
+    __nv_bfloat16 *__restrict__ out,
+    const int batch,
+    const int dim1,
+    const int dim2,
+    const int dim3,
+    const int total_elements
+) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total_elements) return;
+    const int d3 = idx % dim3;
+    const int d1 = (idx / dim3) % dim1;
+    const int d2 = (idx / (dim3 * dim1)) % dim2;
+    const int b = idx / (dim3 * dim1 * dim2);
+    if (b >= batch) return;
+    const int src = ((b * dim1 + d1) * dim2 + d2) * dim3 + d3;
+    out[idx] = input[src];
+}
+
+extern "C" __global__ void narrow_dim1_bf16(
+    const __nv_bfloat16 *__restrict__ input,
+    __nv_bfloat16 *__restrict__ out,
+    const int batch,
+    const int dim1,
+    const int width,
+    const int start,
+    const int len,
+    const int total_elements
+) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total_elements) return;
+    const int w = idx % width;
+    const int offset = (idx / width) % len;
+    const int b = idx / (width * len);
+    if (b >= batch) return;
+    const int src_dim1 = start + offset;
+    if (src_dim1 >= dim1) return;
+    out[idx] = input[(b * dim1 + src_dim1) * width + w];
 }

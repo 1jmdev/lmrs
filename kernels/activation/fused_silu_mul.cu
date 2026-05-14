@@ -21,3 +21,16 @@ extern "C" __global__ void qwen_fused_silu_mul_bf16(
         out[i] = __float2bfloat16(fast_silu(g) * u);
     }
 }
+
+extern "C" __global__ void qwen_silu_mul_bf16(
+    const __nv_bfloat16 *__restrict__ gate,
+    const __nv_bfloat16 *__restrict__ up,
+    __nv_bfloat16 *__restrict__ dst,
+    const int total_elements
+) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total_elements) return;
+    const float g = __bfloat162float(gate[idx]);
+    const float u = __bfloat162float(up[idx]);
+    dst[idx] = __float2bfloat16(fast_silu(g) * u);
+}
