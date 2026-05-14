@@ -1,9 +1,6 @@
 #include <cuda_bf16.h>
-__device__ __forceinline__ float fast_silu(float x) {
-    return x / (1.0f + __expf(-x));
-}
 
-extern "C" __global__ void qwen_fused_silu_mul_bf16(
+extern "C" __global__ void fused_gelu_mul_bf16(
     const __nv_bfloat16 *__restrict__ gate_up,
     __nv_bfloat16 *__restrict__ dst,
     const int intermediate_size
@@ -17,6 +14,7 @@ extern "C" __global__ void qwen_fused_silu_mul_bf16(
     for (int i = tid; i < intermediate_size; i += block_size) {
         const float g = __bfloat162float(gate[i]);
         const float u = __bfloat162float(up[i]);
-        out[i] = __float2bfloat16(fast_silu(g) * u);
+        const float gelu = 0.5f * g * (1.0f + tanhf(0.7978845608f * (g + 0.044715f * g * g * g)));
+        out[i] = __float2bfloat16(gelu * u);
     }
 }

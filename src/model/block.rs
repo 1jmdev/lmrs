@@ -1,8 +1,8 @@
 use candle_core::{Result, Tensor};
 use candle_nn::{Linear, Module, RmsNorm, VarBuilder, linear_no_bias};
+use kernels;
 
 use crate::model::attention::{Attention, AttentionConfig};
-use crate::model::kernels;
 
 #[derive(Debug, Clone)]
 pub struct GatedSiluMlpConfig {

@@ -1,6 +1,5 @@
 use candle_core::Tensor;
-
-use crate::model::kernels;
+use kernels;
 
 pub struct Sampler;
 

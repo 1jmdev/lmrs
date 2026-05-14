@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "crates/runtime",
-    #"crates/kernels",
+    "crates/kernels",
     #"crates/tensor",
     #"crates/ops",
     #"crates/model",
@@ -15,6 +15,7 @@ resolver = "2"
 
 [workspace.dependencies]
 runtime ={ path = "crates/runtime" }
+kernels ={ path = "crates/kernels" }
 anyhow = "1.0.102"
 axum = { version = "0.8.9", features = ["macros"] }
 candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.10.2", features = ["cuda", "cudnn"] }

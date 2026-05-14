@@ -1,6 +1,7 @@
 use candle_core::{D, Result, Tensor};
 use candle_nn::rotary_emb::rope;
 use candle_nn::{Linear, Module, RmsNorm, VarBuilder, linear, linear_no_bias};
+use kernels;
 
 #[derive(Debug, Clone)]
 pub struct AttentionConfig {
@@ -175,7 +176,7 @@ impl Attention {
         let attn = (q.matmul(&k.transpose(D::Minus2, D::Minus1)?)? * scale)?;
         let attn = if causal {
             let total_len = k.dim(2)?;
-            let mask = crate::model::kernels::causal_mask(
+            let mask = kernels::causal_mask(
                 seq_len,
                 total_len,
                 total_len - seq_len,

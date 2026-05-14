@@ -4,8 +4,14 @@ use candle_core::cuda_backend::{CudaStorage, CudaStorageSlice, WrapErr};
 use candle_core::{CpuStorage, DType, Layout, Result, Shape, Tensor};
 use runtime::cuda_alloc;
 
-use super::{QWEN_MODULE_NAME, ptx};
+use crate::ptx;
 
+const MODULE_NAME: &str = "lmrs_activation_silu";
+
+/// Applies the Qwen-style fused SiLU-and-multiply MLP activation.
+///
+/// The input last dimension must be `intermediate_size * 2` and contain the
+/// concatenated gate and up projections in BF16 CUDA storage.
 pub fn fused_silu_mul(gate_up: &Tensor, intermediate_size: usize) -> Result<Tensor> {
     if !gate_up.device().is_cuda() {
         candle_core::bail!("qwen_fused_silu_mul requires CUDA");
@@ -19,7 +25,7 @@ struct FusedSiluMul {
 
 impl candle_core::CustomOp1 for FusedSiluMul {
     fn name(&self) -> &'static str {
-        "qwen-fused-silu-mul"
+        "activation-fused-silu-mul"
     }
 
     fn cpu_fwd(&self, _storage: &CpuStorage, _layout: &Layout) -> Result<(CpuStorage, Shape)> {
@@ -46,8 +52,8 @@ impl candle_core::CustomOp1 for FusedSiluMul {
         }
         let func = dev.get_or_load_custom_func(
             "qwen_fused_silu_mul_bf16",
-            QWEN_MODULE_NAME,
-            ptx::QWEN_KERNELS,
+            MODULE_NAME,
+            ptx::ACTIVATION_FUSED_SILU_MUL,
         )?;
         let intermediate_size = self.intermediate_size as i32;
         let cfg = LaunchConfig {

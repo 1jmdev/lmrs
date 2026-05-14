@@ -1,7 +1,6 @@
 pub mod attention;
 pub mod block;
 pub mod config;
-pub mod kernels;
 pub mod loader;
 pub mod model;
 pub mod models;

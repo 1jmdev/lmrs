@@ -4,13 +4,19 @@ use candle_core::cuda_backend::{CudaStorage, CudaStorageSlice, WrapErr};
 use candle_core::{CpuStorage, DType, Device, Layout, Result, Shape, Tensor};
 use runtime::cuda_alloc;
 
-use super::{GENERIC_MODULE_NAME, ptx};
+use crate::ptx;
 
+const MODULE_NAME: &str = "lmrs_attention_paged";
+
+/// Builds a BF16 causal attention mask on the current CUDA device.
+///
+/// The result shape is `[1, 1, seq_len, total_len]` so it broadcasts over
+/// batch and head dimensions before softmax.
 pub fn causal_mask(
     seq_len: usize,
     total_len: usize,
     start_pos: usize,
-    device: &candle_core::Device,
+    device: &Device,
 ) -> Result<Tensor> {
     if !device.is_cuda() {
         candle_core::bail!("causal_mask requires CUDA");
@@ -34,7 +40,7 @@ struct CausalMask {
 
 impl candle_core::CustomOp1 for CausalMask {
     fn name(&self) -> &'static str {
-        "generic-causal-mask"
+        "attention-causal-mask"
     }
 
     fn cpu_fwd(&self, _storage: &CpuStorage, _layout: &Layout) -> Result<(CpuStorage, Shape)> {
@@ -52,8 +58,8 @@ impl candle_core::CustomOp1 for CausalMask {
         let elem_count = layout.shape().elem_count();
         let func = dev.get_or_load_custom_func(
             "generic_causal_mask_bf16",
-            GENERIC_MODULE_NAME,
-            ptx::GENERIC_KERNELS,
+            MODULE_NAME,
+            ptx::ATTENTION_PAGED_ATTN_FWD,
         )?;
         let seq_len = self.seq_len as i32;
         let total_len = self.total_len as i32;
@@ -88,52 +94,4 @@ impl candle_core::CustomOp1 for CausalMask {
             layout.shape().clone(),
         ))
     }
-}
-
-pub fn gpu_argmax(logits: &Tensor) -> Result<u32> {
-    if logits.dtype() != DType::BF16 {
-        candle_core::bail!("gpu_argmax is BF16-only");
-    }
-    let dev = match logits.device() {
-        Device::Cuda(dev) => dev,
-        _ => candle_core::bail!("gpu_argmax requires CUDA"),
-    };
-    let logits = logits.contiguous()?.flatten_all()?;
-    let vocab_size = logits.elem_count();
-    let (storage, layout) = logits.storage_and_layout();
-    let storage = match &*storage {
-        candle_core::Storage::Cuda(storage) => storage,
-        _ => candle_core::bail!("gpu_argmax requires CUDA storage"),
-    };
-    let (o1, _o2) = layout
-        .contiguous_offsets()
-        .ok_or_else(|| candle_core::Error::Msg("gpu_argmax requires contiguous logits".into()))?;
-
-    let out = unsafe { cuda_alloc::<i32>(dev, 1)? };
-    let func = dev.get_or_load_custom_func(
-        "generic_argmax_bf16",
-        GENERIC_MODULE_NAME,
-        ptx::GENERIC_KERNELS,
-    )?;
-    let vocab_size_i32 = vocab_size as i32;
-    match &storage.slice {
-        CudaStorageSlice::BF16(s) => {
-            let src = s.slice(o1..);
-            let mut builder = func.builder();
-            builder.arg(&src);
-            builder.arg(&out);
-            builder.arg(&vocab_size_i32);
-            unsafe {
-                builder.launch(LaunchConfig {
-                    grid_dim: (1, 1, 1),
-                    block_dim: (256, 1, 1),
-                    shared_mem_bytes: 0,
-                })
-            }
-            .w()?;
-        }
-        _ => candle_core::bail!("gpu_argmax is BF16-only"),
-    }
-    let token = dev.clone_dtoh(&out)?;
-    Ok(token[0] as u32)
 }
