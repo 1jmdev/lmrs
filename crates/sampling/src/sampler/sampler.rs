@@ -1,6 +1,6 @@
-use candle_core::{DType, Device, Result, Tensor};
+use candle_core::{DType, Device, Tensor};
 
-use crate::{LogitsProcessor, SamplingStrategy, strategies::Greedy};
+use crate::{Greedy, LogitsProcessor, Result, SamplingStrategy};
 
 use super::SampleOutput;
 
@@ -11,7 +11,7 @@ use super::SampleOutput;
 /// ```
 /// use sampling::{SamplerConfig, TopK};
 ///
-/// # fn main() -> candle_core::Result<()> {
+/// # fn main() -> sampling::Result<()> {
 /// let config = SamplerConfig::new(Box::new(TopK::new(8)?)).with_seed(123);
 /// assert_eq!(config.seed(), 123);
 /// # Ok(())
@@ -59,7 +59,7 @@ impl Default for SamplerConfig {
 /// use candle_core::{Device, Tensor};
 /// use sampling::{Sampler, SamplerConfig, Temperature};
 ///
-/// # fn main() -> candle_core::Result<()> {
+/// # fn main() -> sampling::Result<()> {
 /// let logits = Tensor::from_vec(vec![1.0_f32, 5.0, 2.0], 3, &Device::Cpu)?;
 /// let mut sampler = Sampler::new(SamplerConfig::default());
 /// sampler.push_processor(Temperature::new(1.0)?);
@@ -127,10 +127,10 @@ impl Default for Sampler {
 mod tests {
     use candle_core::{Device, Tensor};
 
-    use crate::{RepetitionPenalty, Sampler, SamplerConfig, Temperature, TopK};
+    use crate::{RepetitionPenalty, Result, Sampler, SamplerConfig, Temperature, TopK};
 
     #[test]
-    fn greedy_sampler_picks_largest_logit() -> candle_core::Result<()> {
+    fn greedy_sampler_picks_largest_logit() -> Result<()> {
         let logits = Tensor::from_vec(vec![0.0_f32, 3.0, 1.0], 3, &Device::Cpu)?;
         let mut sampler = Sampler::default();
         assert_eq!(sampler.sample(&logits, &[])?.token_id(), 1);
@@ -138,7 +138,7 @@ mod tests {
     }
 
     #[test]
-    fn processors_are_chained_before_sampling() -> candle_core::Result<()> {
+    fn processors_are_chained_before_sampling() -> Result<()> {
         let logits = Tensor::from_vec(vec![4.0_f32, 3.0], 2, &Device::Cpu)?;
         let mut sampler = Sampler::default();
         sampler.push_processor(Temperature::new(2.0)?);
@@ -148,7 +148,7 @@ mod tests {
     }
 
     #[test]
-    fn top_k_limits_candidates() -> candle_core::Result<()> {
+    fn top_k_limits_candidates() -> Result<()> {
         let logits = Tensor::from_vec(vec![0.0_f32, 5.0, 4.0], 3, &Device::Cpu)?;
         let mut sampler = Sampler::new(SamplerConfig::new(Box::new(TopK::new(2)?)).with_seed(10));
         let token = sampler.sample(&logits, &[])?.token_id();

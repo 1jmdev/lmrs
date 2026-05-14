@@ -1,6 +1,4 @@
-use candle_core::Result;
-
-use crate::sampler::SampleOutput;
+use crate::{Result, SampleOutput, SamplingError};
 
 use super::{SamplingStrategy, softmax_choice, sorted_logits};
 
@@ -11,7 +9,7 @@ use super::{SamplingStrategy, softmax_choice, sorted_logits};
 /// ```
 /// use sampling::{SamplingStrategy, TopP};
 ///
-/// # fn main() -> candle_core::Result<()> {
+/// # fn main() -> sampling::Result<()> {
 /// let mut rng = 9;
 /// let out = TopP::new(0.9)?.sample(&[0.0, 10.0, 9.0], &mut rng)?;
 /// assert!(out.token_id() == 1 || out.token_id() == 2);
@@ -27,7 +25,7 @@ impl TopP {
     /// Creates a nucleus sampling strategy.
     pub fn new(p: f64) -> Result<Self> {
         if !p.is_finite() || p <= 0.0 || p > 1.0 {
-            candle_core::bail!("top_p must be in (0, 1]")
+            return Err(SamplingError::invalid("top_p must be in (0, 1]"));
         }
         Ok(Self { p })
     }
@@ -42,7 +40,7 @@ impl SamplingStrategy for TopP {
     fn sample(&self, logits: &[f32], rng: &mut u64) -> Result<SampleOutput> {
         let sorted = sorted_logits(logits);
         if sorted.is_empty() {
-            candle_core::bail!("cannot sample from empty logits")
+            return Err(SamplingError::invalid("cannot sample from empty logits"));
         }
         let max = sorted[0].1;
         let denom: f64 = sorted

@@ -4,7 +4,7 @@ use std::thread::{self, JoinHandle};
 use cache::CacheManager;
 use candle_core::{Device, IndexOp, Tensor};
 use model::Model;
-use sampling::Sampler;
+use sampling::{Sampler, SamplingError};
 use thiserror::Error;
 
 use crate::batch::{BatchEntry, ExecutionBatch};
@@ -18,6 +18,9 @@ pub enum WorkerError {
     /// Candle model/tensor operation failed.
     #[error(transparent)]
     Candle(#[from] candle_core::Error),
+    /// Sampling failed after model execution.
+    #[error(transparent)]
+    Sampling(#[from] SamplingError),
     /// A worker channel disconnected.
     #[error("worker channel disconnected")]
     ChannelDisconnected,

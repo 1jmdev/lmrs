@@ -1,6 +1,4 @@
-use candle_core::Result;
-
-use crate::sampler::SampleOutput;
+use crate::{Result, SampleOutput, SamplingError};
 
 use super::{SamplingStrategy, softmax_choice, sorted_logits};
 
@@ -11,7 +9,7 @@ use super::{SamplingStrategy, softmax_choice, sorted_logits};
 /// ```
 /// use sampling::{SamplingStrategy, TopK};
 ///
-/// # fn main() -> candle_core::Result<()> {
+/// # fn main() -> sampling::Result<()> {
 /// let mut rng = 42;
 /// let out = TopK::new(2)?.sample(&[0.0, 10.0, 9.0], &mut rng)?;
 /// assert!(out.token_id() == 1 || out.token_id() == 2);
@@ -27,7 +25,7 @@ impl TopK {
     /// Creates a top-k strategy.
     pub fn new(k: usize) -> Result<Self> {
         if k == 0 {
-            candle_core::bail!("top_k must be greater than zero")
+            return Err(SamplingError::invalid("top_k must be greater than zero"));
         }
         Ok(Self { k })
     }

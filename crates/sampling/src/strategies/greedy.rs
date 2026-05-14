@@ -1,6 +1,4 @@
-use candle_core::Result;
-
-use crate::sampler::SampleOutput;
+use crate::{Result, SampleOutput, SamplingError};
 
 use super::{SamplingStrategy, sorted_logits};
 
@@ -11,7 +9,7 @@ use super::{SamplingStrategy, sorted_logits};
 /// ```
 /// use sampling::{Greedy, SamplingStrategy};
 ///
-/// # fn main() -> candle_core::Result<()> {
+/// # fn main() -> sampling::Result<()> {
 /// let mut rng = 7;
 /// let out = Greedy.sample(&[0.0, 2.0, 1.0], &mut rng)?;
 /// assert_eq!(out.token_id(), 1);
@@ -24,7 +22,7 @@ pub struct Greedy;
 impl SamplingStrategy for Greedy {
     fn sample(&self, logits: &[f32], _rng: &mut u64) -> Result<SampleOutput> {
         let Some((token, logit)) = sorted_logits(logits).into_iter().next() else {
-            candle_core::bail!("cannot sample from empty logits")
+            return Err(SamplingError::invalid("cannot sample from empty logits"));
         };
         Ok(SampleOutput::new(token as u32, 0.0, logit))
     }

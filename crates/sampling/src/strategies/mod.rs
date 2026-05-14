@@ -10,9 +10,7 @@ pub use min_p::MinP;
 pub use top_k::TopK;
 pub use top_p::TopP;
 
-use candle_core::Result;
-
-use crate::sampler::SampleOutput;
+use crate::{Result, SampleOutput, SamplingError};
 
 /// Selects a token from processed logits.
 pub trait SamplingStrategy: Send + Sync {
@@ -28,7 +26,7 @@ pub(crate) fn sorted_logits(logits: &[f32]) -> Vec<(usize, f32)> {
 
 pub(crate) fn softmax_choice(candidates: &[(usize, f32)], rng: &mut u64) -> Result<SampleOutput> {
     if candidates.is_empty() {
-        candle_core::bail!("cannot sample from an empty candidate set")
+        return Err(SamplingError::invalid("cannot sample from an empty candidate set"));
     }
     let max = candidates[0].1;
     let mut weights = Vec::with_capacity(candidates.len());
@@ -39,7 +37,9 @@ pub(crate) fn softmax_choice(candidates: &[(usize, f32)], rng: &mut u64) -> Resu
         weights.push(weight);
     }
     if !sum.is_finite() || sum <= 0.0 {
-        candle_core::bail!("logits produced an invalid probability distribution")
+        return Err(SamplingError::invalid(
+            "logits produced an invalid probability distribution",
+        ));
     }
     let mut target = next_unit(rng) * sum;
     for ((token, logit), weight) in candidates.iter().zip(weights) {
