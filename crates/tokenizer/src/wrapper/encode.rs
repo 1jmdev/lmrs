@@ -1,7 +1,7 @@
 use std::{fs, path::Path, sync::Arc};
 
 use minijinja::{Environment, context};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokenizers::Tokenizer;
 
 use super::{DecodeOptions, SpecialTokens};
@@ -123,13 +123,17 @@ impl TokenizerWrapper {
         chat_template_path: Option<impl AsRef<Path>>,
     ) -> crate::Result<Self> {
         let tokenizer = Tokenizer::from_file(tokenizer_path.as_ref())?;
-        let special_tokens = match tokenizer_config_path {
+        let special_tokens = match tokenizer_config_path.as_ref() {
             Some(path) => SpecialTokens::from_config_file(&tokenizer, path)?,
             None => SpecialTokens::default(),
         };
         let chat_template = match chat_template_path {
             Some(path) => Some(Arc::<str>::from(fs::read_to_string(path)?)),
-            None => None,
+            None => tokenizer_config_path
+                .map(read_chat_template_from_config)
+                .transpose()?
+                .flatten()
+                .map(Arc::<str>::from),
         };
         Ok(Self {
             tokenizer: Arc::new(tokenizer),
@@ -157,7 +161,11 @@ impl TokenizerWrapper {
     }
 
     /// Encodes many texts in one tokenizer call.
-    pub fn encode_batch(&self, texts: &[String], options: EncodeOptions) -> crate::Result<Vec<Vec<u32>>> {
+    pub fn encode_batch(
+        &self,
+        texts: &[String],
+        options: EncodeOptions,
+    ) -> crate::Result<Vec<Vec<u32>>> {
         Ok(self
             .tokenizer
             .encode_batch(texts.to_vec(), options.add_special_tokens())?
@@ -212,6 +220,16 @@ impl TokenizerWrapper {
     }
 }
 
+#[derive(Deserialize)]
+struct TokenizerConfigTemplate {
+    chat_template: Option<String>,
+}
+
+fn read_chat_template_from_config(path: impl AsRef<Path>) -> crate::Result<Option<String>> {
+    let config: TokenizerConfigTemplate = serde_json::from_str(&fs::read_to_string(path)?)?;
+    Ok(config.chat_template)
+}
+
 #[cfg(test)]
 mod tests {
     use ahash::AHashMap;
@@ -237,7 +255,8 @@ mod tests {
     fn encodes_single_and_batch_text() -> crate::Result<()> {
         let wrapper = wrapper()?;
         assert_eq!(wrapper.encode("hello")?, vec![0]);
-        let batch = wrapper.encode_batch(&["hello".into(), "world".into()], EncodeOptions::default())?;
+        let batch =
+            wrapper.encode_batch(&["hello".into(), "world".into()], EncodeOptions::default())?;
         assert_eq!(batch, vec![vec![0], vec![1]]);
         Ok(())
     }

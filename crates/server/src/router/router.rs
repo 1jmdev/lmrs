@@ -11,11 +11,15 @@ use crate::{
 ///
 /// # Example
 ///
-/// ```
-/// use server::{AppState, EchoEngine, build_router};
+/// ```no_run
+/// use server::{AppState, ServerConfig, ServerEngine, build_router};
 ///
-/// let state = AppState::new(EchoEngine::new("demo"));
+/// # fn main() -> anyhow::Result<()> {
+/// let config = ServerConfig::from_env();
+/// let state = AppState::new(ServerEngine::load(&config)?);
 /// let _router = build_router(state);
+/// # Ok(())
+/// # }
 /// ```
 pub fn build_router(state: AppState) -> Router {
     Router::new()

@@ -1,5 +1,5 @@
 use axum::serve;
-use server::{AppState, EchoEngine, ServerConfig, build_router};
+use server::{AppState, ServerConfig, ServerEngine, build_router};
 use tokio::net::TcpListener;
 use tracing::info;
 
@@ -10,7 +10,8 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = ServerConfig::from_env();
-    let state = AppState::new(EchoEngine::new(config.model.clone()));
+    let engine = ServerEngine::load(&config)?;
+    let state = AppState::new(engine);
     let app = build_router(state);
     let listener = TcpListener::bind(config.bind_addr()).await?;
 

@@ -13,6 +13,8 @@ pub struct HealthResponse {
 /// # Example
 ///
 /// ```
+/// use axum::response::IntoResponse;
+///
 /// # async fn run() {
 /// let response = server::health().await.into_response();
 /// assert_eq!(response.status(), axum::http::StatusCode::OK);

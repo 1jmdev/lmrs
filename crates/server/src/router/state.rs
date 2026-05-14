@@ -10,11 +10,15 @@ use crate::engine::{EngineHandle, SharedEngine};
 ///
 /// # Example
 ///
-/// ```
-/// use server::{AppState, EchoEngine};
+/// ```no_run
+/// use server::{AppState, ServerConfig, ServerEngine};
 ///
-/// let state = AppState::new(EchoEngine::new("demo"));
-/// assert_eq!(state.engine().model_id(), "demo");
+/// # fn main() -> anyhow::Result<()> {
+/// let config = ServerConfig::from_env();
+/// let state = AppState::new(ServerEngine::load(&config)?);
+/// assert_eq!(state.engine().model_id(), config.model);
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Clone)]
 pub struct AppState {
