@@ -7,8 +7,8 @@ members = [
     "crates/model",
     "crates/cache",
     #"crates/engine",
-    #"crates/sampling",
-    #"crates/tokenizer",
+    "crates/sampling",
+    "crates/tokenizer",
     #"crates/server",
 ]
 resolver = "2"
@@ -19,6 +19,8 @@ kernels ={ path = "crates/kernels" }
 tensor ={ path = "crates/tensor" }
 cache ={ path = "crates/cache" }
 ops ={ path = "crates/ops" }
+sampling ={ path = "crates/sampling" }
+tokenizer ={ path = "crates/tokenizer" }
 anyhow = "1.0.102"
 axum = { version = "0.8.9", features = ["macros"] }
 candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.10.2", features = ["cuda", "cudnn"] }
