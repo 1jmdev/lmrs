@@ -3,7 +3,7 @@ members = [
     "crates/runtime",
     "crates/kernels",
     "crates/tensor",
-    #"crates/ops",
+    "crates/ops",
     #"crates/model",
     #"crates/cache",
     #"crates/engine",

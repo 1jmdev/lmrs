@@ -125,6 +125,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "candle-nn"
+version = "0.10.2"
+source = "git+https://github.com/huggingface/candle.git#5447a8779871654e542e65693e7d26f1e33b215f"
+dependencies = [
+ "candle-core",
+ "half",
+ "libc",
+ "num-traits",
+ "rayon",
+ "safetensors 0.7.0",
+ "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "candle-ug"
 version = "0.10.2"
 source = "git+https://github.com/huggingface/candle.git#5447a8779871654e542e65693e7d26f1e33b215f"
@@ -1036,6 +1051,16 @@ checksum = "1e68317604e77e53b85896388e1a803c1d21b74c899ec9e5e1112db90735edd7"
 dependencies = [
  "cc",
  "pkg-config",
+]
+
+[[package]]
+name = "ops"
+version = "0.1.0"
+dependencies = [
+ "candle-core",
+ "candle-nn",
+ "kernels",
+ "tensor",
 ]
 
 [[package]]
