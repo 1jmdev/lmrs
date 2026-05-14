@@ -88,7 +88,7 @@ impl Attention {
     pub fn new(config: AttentionConfig, weights: WeightBuilder) -> Result<Self> {
         let q_dim = config.num_heads * config.head_dim;
         let kv_dim = config.num_kv_heads * config.head_dim;
-        let make_linear = |out_features: usize, name: &str| {
+        let make_linear = |in_features: usize, out_features: usize, name: &str| {
             let bias = if config.attention_bias {
                 Some(weights.get(&format!("{name}.bias"))?)
             } else {
@@ -96,7 +96,7 @@ impl Attention {
             };
             LinearOp::new(
                 LinearConfig {
-                    in_features: config.hidden_size,
+                    in_features,
                     out_features,
                     bias: config.attention_bias,
                 },
@@ -125,10 +125,10 @@ impl Attention {
             None => None,
         };
         Ok(Self {
-            q_proj: make_linear(q_dim, "q_proj")?,
-            k_proj: make_linear(kv_dim, "k_proj")?,
-            v_proj: make_linear(kv_dim, "v_proj")?,
-            o_proj: make_linear(config.hidden_size, "o_proj")?,
+            q_proj: make_linear(config.hidden_size, q_dim, "q_proj")?,
+            k_proj: make_linear(config.hidden_size, kv_dim, "k_proj")?,
+            v_proj: make_linear(config.hidden_size, kv_dim, "v_proj")?,
+            o_proj: make_linear(q_dim, config.hidden_size, "o_proj")?,
             q_norm,
             k_norm,
             num_heads: config.num_heads,
