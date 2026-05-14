@@ -1291,13 +1291,6 @@ dependencies = [
 [[package]]
 name = "kernels"
 version = "0.1.0"
-dependencies = [
- "criterion",
- "cudarc",
- "half",
- "runtime",
- "tensor",
-]
 
 [[package]]
 name = "lazy_static"
