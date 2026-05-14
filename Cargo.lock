@@ -2081,6 +2081,8 @@ version = "0.1.0"
 dependencies = [
  "candle-core",
  "candle-nn",
+ "cudarc 0.19.6",
+ "half",
  "kernels",
  "tensor",
 ]

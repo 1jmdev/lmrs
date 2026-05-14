@@ -6,5 +6,7 @@ edition = "2024"
 [dependencies]
 candle-core = { workspace = true }
 candle-nn = { workspace = true }
+cudarc = { workspace = true }
+half = { workspace = true }
 kernels = { workspace = true }
 tensor = { workspace = true }
