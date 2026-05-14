@@ -2,7 +2,6 @@ use cudarc::driver::CudaView;
 use cudarc::driver::LaunchConfig;
 use cudarc::driver::PushKernelArg;
 use cudarc::nvrtc::Ptx;
-use half::bf16;
 use tensor::{DType, Result, Tensor, TensorError};
 
 use crate::ptx;
@@ -52,13 +51,13 @@ pub fn gpu_argmax(logits: &Tensor) -> Result<u32> {
     Ok(token[0] as u32)
 }
 
-fn bf16_view(tensor: &Tensor) -> Result<CudaView<'_, bf16>> {
+fn bf16_view(tensor: &Tensor) -> Result<CudaView<'_, u16>> {
     unsafe {
         tensor
             .storage()
             .buffer()
             .as_slice()
-            .transmute::<bf16>(tensor.numel())
+            .transmute::<u16>(tensor.numel())
     }
     .ok_or_else(|| TensorError::InvalidArgument("failed to create BF16 tensor view".to_string()))
 }

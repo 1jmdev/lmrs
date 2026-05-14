@@ -1,6 +1,5 @@
 use cudarc::driver::{CudaView, CudaViewMut, LaunchConfig, PushKernelArg};
 use cudarc::nvrtc::Ptx;
-use half::bf16;
 use tensor::{CudaBuf, DType, Result, SharedStorage, Stride, Tensor, TensorError};
 
 use crate::ptx;
@@ -74,10 +73,7 @@ fn output_tensor(x: &Tensor, out: cudarc::driver::CudaSlice<u8>) -> Tensor {
     Tensor::from_storage(storage, shape, stride, x.dtype())
 }
 
-fn launch<T>(x: &Tensor, symbol: &str, src: &CudaView<'_, T>, dst: &mut CudaViewMut<'_, T>) -> Result<()>
-where
-    T: cudarc::driver::DeviceRepr,
-{
+fn launch<T>(x: &Tensor, symbol: &str, src: &CudaView<'_, T>, dst: &mut CudaViewMut<'_, T>) -> Result<()> {
     let stream = x.storage().buffer().as_slice().stream();
     let module = stream
         .context()
@@ -107,13 +103,13 @@ fn validate_contiguous(tensor: &Tensor) -> Result<()> {
     Ok(())
 }
 
-fn bf16_view(tensor: &Tensor) -> Result<CudaView<'_, bf16>> {
+fn bf16_view(tensor: &Tensor) -> Result<CudaView<'_, u16>> {
     unsafe {
         tensor
             .storage()
             .buffer()
             .as_slice()
-            .transmute::<bf16>(tensor.numel())
+            .transmute::<u16>(tensor.numel())
     }
     .ok_or_else(|| TensorError::InvalidArgument("failed to create BF16 tensor view".to_string()))
 }
@@ -121,8 +117,8 @@ fn bf16_view(tensor: &Tensor) -> Result<CudaView<'_, bf16>> {
 fn bf16_view_mut(
     out: &mut cudarc::driver::CudaSlice<u8>,
     numel: usize,
-) -> Result<CudaViewMut<'_, bf16>> {
-    unsafe { out.transmute_mut::<bf16>(numel) }.ok_or_else(|| {
+) -> Result<CudaViewMut<'_, u16>> {
+    unsafe { out.transmute_mut::<u16>(numel) }.ok_or_else(|| {
         TensorError::InvalidArgument("failed to create mutable BF16 output view".to_string())
     })
 }

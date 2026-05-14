@@ -33,7 +33,7 @@ pub fn causal_mask(
             .default_stream()
             .alloc::<u8>(elem_count * DType::BF16.size_in_bytes())?
     };
-    let mut out_view = unsafe { out.transmute_mut::<half::bf16>(elem_count) }.ok_or_else(|| {
+    let mut out_view = unsafe { out.transmute_mut::<u16>(elem_count) }.ok_or_else(|| {
         TensorError::InvalidArgument("failed to create BF16 causal mask view".to_string())
     })?;
 

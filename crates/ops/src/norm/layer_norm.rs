@@ -1,5 +1,4 @@
-use candle_core::{Result, Tensor};
-use candle_nn::{LayerNorm, Module, VarBuilder};
+use tensor::{Result, Tensor, TensorError};
 
 /// Configuration for affine layer normalization.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -12,19 +11,33 @@ pub struct LayerNormConfig {
 
 /// Last-dimension LayerNorm operator.
 pub struct LayerNormOp {
-    inner: LayerNorm,
+    weight: Tensor,
+    bias: Tensor,
+    eps: f32,
 }
 
 impl LayerNormOp {
-    /// Creates a LayerNorm operator from weights in `vb`.
-    pub fn new(config: LayerNormConfig, vb: VarBuilder) -> Result<Self> {
+    /// Creates a LayerNorm operator from CUDA BF16 weight and bias tensors.
+    pub fn new(config: LayerNormConfig, weight: Tensor, bias: Tensor) -> Result<Self> {
+        if weight.shape().dims() != [config.hidden_size]
+            || bias.shape().dims() != [config.hidden_size]
+        {
+            return Err(TensorError::ShapeMismatch(format!(
+                "layer_norm weight and bias must have shape [{}], got {:?} and {:?}",
+                config.hidden_size,
+                weight.shape().dims(),
+                bias.shape().dims()
+            )));
+        }
         Ok(Self {
-            inner: candle_nn::layer_norm(config.hidden_size, config.eps, vb)?,
+            weight,
+            bias,
+            eps: config.eps as f32,
         })
     }
 
     /// Applies LayerNorm to `x` over its last dimension.
     pub fn forward(&self, x: &Tensor) -> Result<Tensor> {
-        self.inner.forward(x)
+        kernels::layer_norm(x, &self.weight, &self.bias, self.eps)
     }
 }

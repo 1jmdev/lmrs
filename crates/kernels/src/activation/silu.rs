@@ -1,6 +1,5 @@
 use cudarc::driver::{CudaView, LaunchConfig, PushKernelArg};
 use cudarc::nvrtc::Ptx;
-use half::bf16;
 use tensor::{CudaBuf, DType, Result, Shape, SharedStorage, Stride, Tensor, TensorError};
 
 use crate::ptx;
@@ -40,7 +39,7 @@ pub fn fused_silu_mul(gate_up: &Tensor, intermediate_size: usize) -> Result<Tens
     };
 
     let src = bf16_view(gate_up)?;
-    let mut dst = unsafe { out.transmute_mut::<bf16>(out_el) }.ok_or_else(|| {
+    let mut dst = unsafe { out.transmute_mut::<u16>(out_el) }.ok_or_else(|| {
         TensorError::InvalidArgument("failed to create BF16 output view".to_string())
     })?;
 
@@ -89,13 +88,13 @@ fn validate_contiguous(tensor: &Tensor) -> Result<()> {
     Ok(())
 }
 
-fn bf16_view(tensor: &Tensor) -> Result<CudaView<'_, bf16>> {
+fn bf16_view(tensor: &Tensor) -> Result<CudaView<'_, u16>> {
     unsafe {
         tensor
             .storage()
             .buffer()
             .as_slice()
-            .transmute::<bf16>(tensor.numel())
+            .transmute::<u16>(tensor.numel())
     }
     .ok_or_else(|| TensorError::InvalidArgument("failed to create BF16 tensor view".to_string()))
 }

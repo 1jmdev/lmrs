@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const CUDA_SOURCES: &[(&str, &str)] = &[
+    ("BASIC", "../../kernels/basic.cu"),
     (
         "ATTENTION_PAGED_ATTN_FWD",
         "../../kernels/attention/paged_attn_fwd.cu",
@@ -13,6 +14,7 @@ const CUDA_SOURCES: &[(&str, &str)] = &[
         "ATTENTION_PAGED_ATTN_BWD",
         "../../kernels/attention/paged_attn_bwd.cu",
     ),
+    ("ATTENTION_MASKED", "../../kernels/attention/masked.cu"),
     (
         "ATTENTION_FLASH_MHA_FWD",
         "../../kernels/attention/flash_mha_fwd.cu",
@@ -22,6 +24,7 @@ const CUDA_SOURCES: &[(&str, &str)] = &[
         "../../kernels/attention/flash_mha_bwd.cu",
     ),
     ("ATTENTION_MLA_FWD", "../../kernels/attention/mla_fwd.cu"),
+    ("ATTENTION_SDPA", "../../kernels/attention/sdpa.cu"),
     ("ATTENTION_SOFTMAX", "../../kernels/attention/softmax.cu"),
     (
         "GEMM_BF16_GEMM_SM89",

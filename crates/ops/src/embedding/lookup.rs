@@ -1,33 +1,34 @@
-use candle_core::{Result, Tensor};
-use candle_nn::{Embedding, Module, VarBuilder};
+use tensor::{Result, Tensor, TensorError};
 
 /// Token embedding lookup table.
 pub struct TokenEmbedding {
-    inner: Embedding,
+    embeddings: Tensor,
 }
 
 impl TokenEmbedding {
-    /// Loads an embedding table with shape `[vocab_size, hidden_size]`.
-    pub fn new(vocab_size: usize, hidden_size: usize, vb: VarBuilder) -> Result<Self> {
-        Ok(Self {
-            inner: candle_nn::embedding(vocab_size, hidden_size, vb)?,
-        })
+    /// Creates an embedding table from a CUDA BF16 tensor shaped `[vocab_size, hidden_size]`.
+    pub fn new(vocab_size: usize, hidden_size: usize, embeddings: Tensor) -> Result<Self> {
+        if embeddings.shape().dims() != [vocab_size, hidden_size] {
+            return Err(TensorError::ShapeMismatch(format!(
+                "embeddings must have shape [{vocab_size}, {hidden_size}], got {:?}",
+                embeddings.shape().dims()
+            )));
+        }
+        Ok(Self { embeddings })
     }
 
     /// Wraps an existing embedding table.
     pub fn from_embeddings(embeddings: Tensor) -> Self {
-        Self {
-            inner: Embedding::new(embeddings, 0),
-        }
+        Self { embeddings }
     }
 
     /// Returns the backing embedding tensor.
     pub fn embeddings(&self) -> &Tensor {
-        self.inner.embeddings()
+        &self.embeddings
     }
 
     /// Looks up token ids and returns hidden states.
     pub fn forward(&self, input_ids: &Tensor) -> Result<Tensor> {
-        self.inner.forward(input_ids)
+        kernels::embedding_lookup(input_ids, &self.embeddings)
     }
 }
