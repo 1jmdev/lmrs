@@ -12,5 +12,10 @@ tokenizers = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
+criterion.workspace = true
 ahash = "0.8.12"
 tempfile = "3.25.0"
+
+[[bench]]
+name = "tokenizer"
+harness = false

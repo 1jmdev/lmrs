@@ -10,3 +10,10 @@ half = { workspace = true }
 kernels = { workspace = true }
 runtime = { workspace = true }
 tensor = { workspace = true }
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "configs"
+harness = false

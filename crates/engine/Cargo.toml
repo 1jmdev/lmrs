@@ -15,3 +15,8 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 half = { workspace = true }
+criterion.workspace = true
+
+[[bench]]
+name = "scheduler"
+harness = false

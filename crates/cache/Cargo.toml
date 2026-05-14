@@ -8,3 +8,22 @@ kernels = { workspace = true }
 tensor = { workspace = true }
 runtime = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "block_pool"
+harness = false
+
+[[bench]]
+name = "cache_manager"
+harness = false
+
+[[bench]]
+name = "prefix_cache"
+harness = false
+
+[[bench]]
+name = "slot_layout"
+harness = false

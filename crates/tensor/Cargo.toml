@@ -8,3 +8,18 @@ cudarc = { workspace = true }
 half = { workspace = true }
 runtime = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "dtype"
+harness = false
+
+[[bench]]
+name = "shape"
+harness = false
+
+[[bench]]
+name = "tensor"
+harness = false
