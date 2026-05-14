@@ -1,0 +1,12 @@
+[package]
+name = "tensor"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+candle-core = { workspace = true }
+cudarc = { workspace = true }
+half = { workspace = true }
+kernels = { workspace = true }
+runtime = { workspace = true }
+thiserror = { workspace = true }
