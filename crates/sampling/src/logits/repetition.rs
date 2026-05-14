@@ -48,16 +48,18 @@ impl LogitsProcessor for RepetitionPenalty {
         }
         let device = logits.device().clone();
         let dims = logits.dims().to_vec();
-        let mut values = logits.flatten_all()?.to_vec1::<f32>()?;
+        let len = logits.elem_count();
+        let mut positive_factors = vec![1.0_f32; len];
+        let mut negative_factors = vec![1.0_f32; len];
         for &token in history {
-            if let Some(value) = values.get_mut(token as usize) {
-                if *value >= 0.0 {
-                    *value /= self.penalty;
-                } else {
-                    *value *= self.penalty;
-                }
+            let index = token as usize;
+            if index < len {
+                positive_factors[index] = 1.0 / self.penalty;
+                negative_factors[index] = self.penalty;
             }
         }
-        Tensor::from_vec(values, dims, &device)
+        let positive = logits * Tensor::from_vec(positive_factors, dims.clone(), &device)?;
+        let negative = logits * Tensor::from_vec(negative_factors, dims, &device)?;
+        logits.ge(0.0_f32)?.where_cond(&positive?, &negative?)
     }
 }

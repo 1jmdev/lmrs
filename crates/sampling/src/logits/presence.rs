@@ -59,16 +59,18 @@ impl LogitsProcessor for FrequencyPresencePenalty {
         }
         let device = logits.device().clone();
         let dims = logits.dims().to_vec();
-        let mut values = logits.flatten_all()?.to_vec1::<f32>()?;
+        let len = logits.elem_count();
+        let mut penalties = vec![0.0_f32; len];
         let mut counts = HashMap::<u32, u32>::new();
         for &token in history {
             *counts.entry(token).or_default() += 1;
         }
         for (token, count) in counts {
-            if let Some(value) = values.get_mut(token as usize) {
-                *value -= self.presence + self.frequency * count as f32;
+            let index = token as usize;
+            if index < len {
+                penalties[index] = self.presence + self.frequency * count as f32;
             }
         }
-        Tensor::from_vec(values, dims, &device)
+        logits - Tensor::from_vec(penalties, dims, &device)?
     }
 }

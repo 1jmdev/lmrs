@@ -1,0 +1,16 @@
+[package]
+name = "tokenizer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+minijinja = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokenizers = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+ahash = "0.8.12"
+tempfile = "3.25.0"
