@@ -6,5 +6,4 @@ edition = "2024"
 [dependencies]
 candle-core = { workspace = true }
 cudarc = { workspace = true }
-half = { workspace = true }
 thiserror = { workspace = true }

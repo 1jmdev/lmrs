@@ -5,5 +5,4 @@ edition = "2024"
 
 [dependencies]
 candle-core = { workspace = true }
-kernels = { workspace = true }
 thiserror = { workspace = true }

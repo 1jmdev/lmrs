@@ -103,7 +103,8 @@ impl Sampler {
             && processed.dtype() == DType::BF16
             && matches!(processed.device(), Device::Cuda(_))
         {
-            let token = kernels::gpu_argmax(&processed)?;
+            let argmax = processed.to_dtype(DType::F32)?.argmax(0)?;
+            let token = argmax.to_scalar::<u32>()?;
             return Ok(SampleOutput::new(token, 0.0, f32::NAN));
         }
 

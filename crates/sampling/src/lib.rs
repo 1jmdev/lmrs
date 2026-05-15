@@ -2,6 +2,6 @@ pub mod logits;
 pub mod sampler;
 pub mod strategies;
 
-pub use logits::{FrequencyPresencePenalty, LogitsProcessor, RepetitionPenalty, Temperature};
+pub use logits::{LogitsProcessor, RepetitionPenalty, Temperature};
 pub use sampler::{SampleOutput, Sampler, SamplerConfig};
-pub use strategies::{BeamSearch, Greedy, MinP, SamplingStrategy, TopK, TopP};
+pub use strategies::{Greedy, SamplingStrategy, TopK, TopP};

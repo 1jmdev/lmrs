@@ -2,11 +2,10 @@
 default-members = ["crates/server"]
 members = [
     "crates/runtime",
-    "crates/kernels",
     "crates/tensor",
     "crates/ops",
-    "crates/model",
     "crates/cache",
+    "crates/model",
     "crates/engine",
     "crates/sampling",
     "crates/tokenizer",
@@ -16,7 +15,6 @@ resolver = "2"
 
 [workspace.dependencies]
 runtime ={ path = "crates/runtime" }
-kernels ={ path = "crates/kernels" }
 tensor ={ path = "crates/tensor" }
 cache ={ path = "crates/cache" }
 model ={ path = "crates/model" }
@@ -32,7 +30,6 @@ candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.10
 clap = { version = "4.6.1", features = ["derive", "env"] }
 cudarc = { version = "0.19.6", features = ["cuda-12080"] }
 futures = "0.3.32"
-half = "2.7.1"
 hf-hub = "0.5.0"
 minijinja = "2.19.0"
 serde = { version = "1.0.228", features = ["derive"] }

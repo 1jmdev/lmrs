@@ -1,12 +1,8 @@
-pub mod beam;
 pub mod greedy;
-pub mod min_p;
 pub mod top_k;
 pub mod top_p;
 
-pub use beam::BeamSearch;
 pub use greedy::Greedy;
-pub use min_p::MinP;
 pub use top_k::TopK;
 pub use top_p::TopP;
 
@@ -14,9 +10,7 @@ use candle_core::Result;
 
 use crate::sampler::SampleOutput;
 
-/// Selects a token from processed logits.
 pub trait SamplingStrategy: Send + Sync {
-    /// Samples one token from a flat logits slice.
     fn sample(&self, logits: &[f32], rng: &mut u64) -> Result<SampleOutput>;
 }
 
