@@ -140,6 +140,7 @@ unsafe extern "C" {
         td: u32,
         d: u32,
         stride_b: u32,
+        seq_len: u32,
         dtype: i32,
         stream: sys::CUstream,
     );
@@ -356,10 +357,11 @@ pub mod pos_embed {
         td: u32,
         d: u32,
         stride_b: u32,
+        seq_len: u32,
         dtype: KernelDType,
         stream: sys::CUstream,
     ) {
-        unsafe { rope_fwd(dst, src, cos, sin, bh, td, d, stride_b, dtype as i32, stream) };
+        unsafe { rope_fwd(dst, src, cos, sin, bh, td, d, stride_b, seq_len, dtype as i32, stream) };
     }
 }
 

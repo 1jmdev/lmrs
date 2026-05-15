@@ -146,8 +146,8 @@ __global__ void transpose_1_2_kernel(
   }
 
   const int col = static_cast<int>(idx % dim3);
-  const int out_dim1 = static_cast<int>((idx / dim3) % dim2);
-  const int out_dim2 = static_cast<int>((idx / (dim3 * dim2)) % dim1);
+  const int out_dim2 = static_cast<int>((idx / dim3) % dim1);
+  const int out_dim1 = static_cast<int>((idx / (dim3 * dim1)) % dim2);
   const int batch = static_cast<int>(idx / (dim3 * dim2 * dim1));
 
   const int64_t source_idx =

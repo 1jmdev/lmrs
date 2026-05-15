@@ -115,6 +115,7 @@ pub fn apply_rotary(x: &Tensor, cos: &Tensor, sin: &Tensor) -> Result<Tensor> {
             dims[3] as u32,
             dims[3] as u32,
             dims[3] as u32,
+            dims[2] as u32,
             dtype,
             stream.cu_stream(),
         )
