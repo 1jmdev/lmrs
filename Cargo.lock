@@ -220,6 +220,7 @@ version = "0.1.0"
 dependencies = [
  "criterion",
  "kernels",
+ "ops",
  "runtime",
  "tensor",
  "thiserror",
@@ -1631,7 +1632,6 @@ dependencies = [
 name = "ops"
 version = "0.1.0"
 dependencies = [
- "cache",
  "criterion",
  "cudarc",
  "half",

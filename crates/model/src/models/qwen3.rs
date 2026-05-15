@@ -1,4 +1,5 @@
-use ops::{narrow_dim1, AttentionContext, LmHead, RmsNormConfig, RmsNormOp, RotaryEmbedding, TokenEmbedding};
+use cache::AttentionContext;
+use ops::{LmHead, RmsNormConfig, RmsNormOp, RotaryEmbedding, TokenEmbedding, narrow_dim1};
 use serde::Deserialize;
 use tensor::{DType, Result, Tensor, TensorError};
 

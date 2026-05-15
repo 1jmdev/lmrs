@@ -1,5 +1,5 @@
-use cache::KvCache;
-use ops::{apply_rotary, attention_context, reshape, transpose_1_2, AttentionContext, LinearConfig, LinearOp, RmsNormConfig, RmsNormOp};
+use cache::{AttentionContext, KvCache, attention_context};
+use ops::{LinearConfig, LinearOp, RmsNormConfig, RmsNormOp, apply_rotary, reshape, transpose_1_2};
 use tensor::{Result, Tensor, TensorError};
 
 use crate::WeightBuilder;
@@ -144,7 +144,7 @@ impl Attention {
     ///
     /// ```no_run
     /// # use model::Attention;
-    /// # use ops::AttentionContext;
+    /// # use cache::AttentionContext;
     /// # use tensor::Tensor;
     /// # fn run(attention: &mut Attention, x: &Tensor, cos: &Tensor, sin: &Tensor) -> tensor::Result<Tensor> {
     /// let y = attention.forward(x, cos, sin, AttentionContext::Prefill)?;

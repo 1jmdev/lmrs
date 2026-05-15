@@ -1,4 +1,5 @@
-use ops::{add, AttentionContext, RmsNormConfig, RmsNormOp};
+use cache::AttentionContext;
+use ops::{RmsNormConfig, RmsNormOp, add};
 use tensor::{Result, Tensor};
 
 use crate::WeightBuilder;
@@ -107,7 +108,7 @@ impl DecoderLayer {
     ///
     /// ```no_run
     /// # use model::DecoderLayer;
-    /// # use ops::AttentionContext;
+    /// # use cache::AttentionContext;
     /// # use tensor::Tensor;
     /// # fn run(layer: &mut DecoderLayer, x: &Tensor, cos: &Tensor, sin: &Tensor) -> tensor::Result<Tensor> {
     /// let y = layer.forward(x, cos, sin, AttentionContext::Prefill)?;

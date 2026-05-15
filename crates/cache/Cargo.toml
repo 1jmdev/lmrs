@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 kernels = { workspace = true }
+ops = { workspace = true }
 tensor = { workspace = true }
 runtime = { workspace = true }
 thiserror = { workspace = true }

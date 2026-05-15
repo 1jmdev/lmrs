@@ -1,10 +1,12 @@
 pub mod block;
+pub mod context;
 pub mod kv;
 pub mod manager;
 pub mod pool;
 pub mod prefix;
 
 pub use block::{BlockId, BlockTable, CacheBlock, SlotLayout};
+pub use context::{AttentionContext, attention_context};
 pub use kv::KvCache;
 pub use manager::{
     BlockAssignment, CacheManager, CacheManagerError, LruEvictionPolicy, SequenceId, SwapDirection,
