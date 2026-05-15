@@ -9,7 +9,7 @@ pub struct SdpaConfig {
     pub head_dim: usize,
     /// Whether to apply a causal mask before softmax.
     pub causal: bool,
-    /// Key-cache offset for causal masking during prefill/decode.
+    /// Position offset for causal masking during prefill/decode.
     pub start_pos: usize,
 }
 

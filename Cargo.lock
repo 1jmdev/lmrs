@@ -233,6 +233,8 @@ name = "cache"
 version = "0.1.0"
 dependencies = [
  "candle-core",
+ "candle-nn",
+ "ops",
  "runtime",
  "tensor",
  "thiserror 2.0.18",
@@ -1840,6 +1842,7 @@ name = "model"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cache",
  "candle-core",
  "candle-nn",
  "hf-hub",

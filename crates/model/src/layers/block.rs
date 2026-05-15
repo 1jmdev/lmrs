@@ -1,6 +1,6 @@
+use cache::AttentionContext;
 use candle_core::{Result, Tensor};
 use candle_nn::{Module, RmsNorm, VarBuilder};
-use ops::AttentionContext;
 
 use crate::layers::{Attention, AttentionConfig, GatedSiluMlp, GatedSiluMlpConfig};
 
@@ -46,7 +46,7 @@ pub struct DecoderLayerConfig {
 /// use candle_core::{DType, Device, Tensor};
 /// use candle_nn::VarBuilder;
 /// use model::{AttentionConfig, DecoderLayer, DecoderLayerConfig, GatedSiluMlpConfig};
-/// use ops::AttentionContext;
+/// use cache::AttentionContext;
 ///
 /// # fn main() -> candle_core::Result<()> {
 /// let device = Device::new_cuda(0)?;

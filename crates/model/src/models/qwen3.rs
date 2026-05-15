@@ -1,6 +1,7 @@
 use candle_core::{DType, Device, Module, Result, Tensor};
 use candle_nn::{Linear, RmsNorm, VarBuilder};
-use ops::{AttentionContext, LmHead, RotaryEmbedding, TokenEmbedding};
+use cache::AttentionContext;
+use ops::{LmHead, RotaryEmbedding, TokenEmbedding};
 use serde::Deserialize;
 
 use crate::layers::{AttentionConfig, DecoderLayer, DecoderLayerConfig, GatedSiluMlpConfig};

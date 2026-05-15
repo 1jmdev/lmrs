@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = { workspace = true }
+cache = { workspace = true }
 candle-core = { workspace = true }
 candle-nn = { workspace = true }
 hf-hub = { workspace = true }

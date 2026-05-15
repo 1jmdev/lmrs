@@ -1,17 +1,12 @@
 use candle_core::{Result, Tensor};
+use ops::attention::{SdpaConfig, repeat_kv, sdpa};
 
-use crate::attention::{SdpaConfig, repeat_kv, sdpa};
-
-/// Attention execution mode with an explicit prefill/decode split.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AttentionContext {
-    /// Processes a prompt span and applies a causal mask across all prompt tokens.
     Prefill,
-    /// Processes one or more newly decoded tokens against an existing KV cache.
     Decode { start_pos: usize },
 }
 
-/// Owned key/value cache for a single attention layer.
 #[derive(Default)]
 pub struct KvCache {
     cache: Option<(Tensor, Tensor)>,
@@ -19,18 +14,15 @@ pub struct KvCache {
 }
 
 impl KvCache {
-    /// Returns the number of valid cached time steps.
     pub fn seq_len(&self) -> usize {
         self.seq_len
     }
 
-    /// Clears all cached key/value states.
     pub fn clear(&mut self) {
         self.cache = None;
         self.seq_len = 0;
     }
 
-    /// Appends new key/value states shaped `[batch, kv_heads, seq, head_dim]`.
     pub fn append(&mut self, k: Tensor, v: Tensor) -> Result<(Tensor, Tensor)> {
         let k = k.contiguous()?;
         let v = v.contiguous()?;
@@ -70,7 +62,6 @@ impl KvCache {
     }
 }
 
-/// Runs attention with explicit prefill/decode behavior.
 pub fn attention_context(
     q: &Tensor,
     k: Tensor,

@@ -1,6 +1,7 @@
 use candle_core::{D, Result, Tensor};
 use candle_nn::{Linear, Module, RmsNorm, VarBuilder, linear, linear_no_bias};
-use ops::{AttentionContext, KvCache, apply_rotary, attention_context};
+use cache::{AttentionContext, KvCache, attention_context};
+use ops::apply_rotary;
 
 /// Multi-head self-attention configuration.
 ///
@@ -43,7 +44,7 @@ pub struct AttentionConfig {
 /// use candle_core::{DType, Device, Tensor};
 /// use candle_nn::VarBuilder;
 /// use model::{Attention, AttentionConfig};
-/// use ops::AttentionContext;
+/// use cache::AttentionContext;
 ///
 /// # fn main() -> candle_core::Result<()> {
 /// let device = Device::new_cuda(0)?;
