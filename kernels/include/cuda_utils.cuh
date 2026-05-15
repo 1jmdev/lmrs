@@ -1,3 +1,5 @@
+#pragma once
+
 #include "compatibility.cuh"
 #include<stdint.h>
 #include<math.h>

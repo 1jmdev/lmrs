@@ -1291,6 +1291,12 @@ dependencies = [
 [[package]]
 name = "kernels"
 version = "0.1.0"
+dependencies = [
+ "cc",
+ "cudarc",
+ "half",
+ "thiserror",
+]
 
 [[package]]
 name = "lazy_static"

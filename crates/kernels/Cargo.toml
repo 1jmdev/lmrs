@@ -4,3 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+cudarc = { workspace = true }
+half = { workspace = true }
+thiserror = { workspace = true }
+
+[build-dependencies]
+cc = { workspace = true }
