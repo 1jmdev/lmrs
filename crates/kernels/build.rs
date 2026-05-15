@@ -10,6 +10,7 @@ const CUDA_FILES: &[&str] = &[
     "norm_ffi.cu",
     "ops_ffi.cu",
     "pos_embed_ffi.cu",
+    "tensor_ffi.cu",
 ];
 
 fn main() {
@@ -43,6 +44,7 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", obj_dir.display());
     println!("cargo:rustc-link-lib=static=kernels_cuda_ffi");
     println!("cargo:rustc-link-lib=dylib=cudart");
+    println!("cargo:rustc-link-lib=dylib=stdc++");
     if let Some(cuda_home) = cuda_home() {
         println!("cargo:rustc-link-search=native={}", cuda_home.join("lib64").display());
     }

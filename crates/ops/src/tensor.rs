@@ -263,3 +263,7 @@ pub fn cast_bf16_to_f32(x: &Tensor) -> Result<Vec<f32>> {
 pub fn mul(left: &Tensor, right: &Tensor) -> Result<Tensor> {
     kernels::mul_bf16(left, right)
 }
+
+pub fn concat_dim2(left: &Tensor, right: &Tensor) -> Result<Tensor> {
+    kernels::concat_dim2(left, right)
+}

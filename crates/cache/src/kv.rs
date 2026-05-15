@@ -100,8 +100,8 @@ impl KvCache {
         let new_seq_len = dim(&k, 2, "k")?;
         match self.cache.take() {
             Some((buf_k, buf_v)) => {
-                let full_k = kernels::concat_dim2(&buf_k, &k)?;
-                let full_v = kernels::concat_dim2(&buf_v, &v)?;
+                let full_k = ops::concat_dim2(&buf_k, &k)?;
+                let full_v = ops::concat_dim2(&buf_v, &v)?;
                 self.seq_len += new_seq_len;
                 self.cache = Some((full_k.clone(), full_v.clone()));
                 Ok((full_k, full_v))

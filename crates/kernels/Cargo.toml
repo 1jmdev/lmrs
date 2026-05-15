@@ -6,6 +6,8 @@ edition = "2024"
 [dependencies]
 cudarc = { workspace = true }
 half = { workspace = true }
+runtime = { workspace = true }
+tensor = { workspace = true }
 thiserror = { workspace = true }
 
 [build-dependencies]

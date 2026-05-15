@@ -219,7 +219,6 @@ name = "cache"
 version = "0.1.0"
 dependencies = [
  "criterion",
- "kernels",
  "ops",
  "runtime",
  "tensor",
@@ -1296,6 +1295,8 @@ dependencies = [
  "cc",
  "cudarc",
  "half",
+ "runtime",
+ "tensor",
  "thiserror",
 ]
 

@@ -1,7 +1,7 @@
-use cudarc::driver::{CudaView, LaunchConfig, PushKernelArg};
-use cudarc::nvrtc::Ptx;
-use half::bf16;
-use kernels::ptx::ATTENTION_PAGED_ATTN_FWD;
+use std::ffi::c_void;
+
+use cudarc::driver::{DevicePtr, DevicePtrMut};
+use kernels::{KernelDType, attention::{PagedAttentionParams, paged_attention_v1_raw}};
 use tensor::{CudaBuf, DType, Result, Shape, SharedStorage, Stride, Tensor, TensorError};
 
 /// CUDA BF16 paged attention launch configuration.
@@ -86,62 +86,42 @@ pub fn paged_attention(
         )));
     }
 
-    let mut out = unsafe {
-        q.storage()
-            .buffer()
-            .as_slice()
-            .stream()
-            .alloc::<u8>(q.len_bytes())?
-    };
-    let q_view = bf16_view(q)?;
-    let k_view = bf16_view(k_cache)?;
-    let v_view = bf16_view(v_cache)?;
-    let block_tables_view = i32_view(block_tables)?;
-    let context_lens_view = i32_view(context_lens)?;
-    let mut out_view = unsafe { out.transmute_mut::<bf16>(q.numel()) }.ok_or_else(|| {
-        TensorError::InvalidArgument("failed to create BF16 output view".to_string())
-    })?;
-
-    let module = q
-        .storage()
-        .buffer()
-        .as_slice()
-        .stream()
-        .context()
-        .load_module(Ptx::from_src(ATTENTION_PAGED_ATTN_FWD))?;
-    let func = module.load_function("paged_attention_bf16")?;
     let stream = q.storage().buffer().as_slice().stream();
-    let mut builder = stream.launch_builder(&func);
+    let mut out = unsafe { stream.alloc::<u8>(q.len_bytes())? };
     let batch_i32 = to_i32(batch, "batch")?;
     let num_heads_i32 = to_i32(num_heads, "num_heads")?;
     let num_kv_heads_i32 = to_i32(num_kv_heads, "num_kv_heads")?;
-    let query_len_i32 = to_i32(query_len, "query_len")?;
     let head_dim_i32 = to_i32(head_dim, "head_dim")?;
     let block_size_i32 = to_i32(config.block_size, "block_size")?;
     let max_blocks_per_seq_i32 = to_i32(max_blocks_per_seq, "max_blocks_per_seq")?;
-    let causal_i32 = i32::from(config.causal);
-    builder.arg(&q_view);
-    builder.arg(&k_view);
-    builder.arg(&v_view);
-    builder.arg(&block_tables_view);
-    builder.arg(&context_lens_view);
-    builder.arg(&mut out_view);
-    builder.arg(&batch_i32);
-    builder.arg(&num_heads_i32);
-    builder.arg(&num_kv_heads_i32);
-    builder.arg(&query_len_i32);
-    builder.arg(&head_dim_i32);
-    builder.arg(&block_size_i32);
-    builder.arg(&max_blocks_per_seq_i32);
-    builder.arg(&config.scale);
-    builder.arg(&causal_i32);
+    let (out_ptr, out_sync) = out.device_ptr_mut(stream);
+    let (q_ptr, _q_sync) = q.storage().buffer().as_slice().device_ptr(stream);
+    let (k_ptr, _k_sync) = k_cache.storage().buffer().as_slice().device_ptr(stream);
+    let (v_ptr, _v_sync) = v_cache.storage().buffer().as_slice().device_ptr(stream);
+    let (tables_ptr, _tables_sync) = block_tables.storage().buffer().as_slice().device_ptr(stream);
+    let (lens_ptr, _lens_sync) = context_lens.storage().buffer().as_slice().device_ptr(stream);
     unsafe {
-        builder.launch(LaunchConfig {
-            grid_dim: (batch as u32, num_heads as u32, query_len as u32),
-            block_dim: (256, 1, 1),
-            shared_mem_bytes: 0,
-        })?;
+        paged_attention_v1_raw(
+            out_ptr as *mut c_void,
+            q_ptr as *const c_void,
+            k_ptr as *const c_void,
+            v_ptr as *const c_void,
+            tables_ptr as *const i32,
+            lens_ptr as *const i32,
+            PagedAttentionParams {
+                num_seqs: batch_i32,
+                num_heads: num_heads_i32,
+                num_kv_heads: num_kv_heads_i32,
+                head_size: head_dim_i32,
+                block_size: block_size_i32,
+                max_num_blocks_per_seq: max_blocks_per_seq_i32,
+                scale: config.scale,
+                dtype: KernelDType::Bf16,
+            },
+            stream.cu_stream(),
+        );
     }
+    drop(out_sync);
 
     let shape = Shape::new(q_dims).map_err(|err| TensorError::ShapeMismatch(err.to_string()))?;
     let stride = Stride::contiguous(&shape);
@@ -175,28 +155,6 @@ fn dims(tensor: &Tensor, rank: usize, name: &str) -> Result<Vec<usize>> {
         )));
     }
     Ok(dims.to_vec())
-}
-
-fn bf16_view(tensor: &Tensor) -> Result<CudaView<'_, bf16>> {
-    unsafe {
-        tensor
-            .storage()
-            .buffer()
-            .as_slice()
-            .transmute::<bf16>(tensor.numel())
-    }
-    .ok_or_else(|| TensorError::InvalidArgument("failed to create BF16 tensor view".to_string()))
-}
-
-fn i32_view(tensor: &Tensor) -> Result<CudaView<'_, i32>> {
-    unsafe {
-        tensor
-            .storage()
-            .buffer()
-            .as_slice()
-            .transmute::<i32>(tensor.numel())
-    }
-    .ok_or_else(|| TensorError::InvalidArgument("failed to create I32 tensor view".to_string()))
 }
 
 fn to_i32(value: usize, name: &str) -> Result<i32> {
