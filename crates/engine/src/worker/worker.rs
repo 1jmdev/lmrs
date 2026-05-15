@@ -1,7 +1,6 @@
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread::{self, JoinHandle};
 
-use cache::CacheManager;
 use candle_core::{Device, IndexOp, Tensor};
 use model::Model;
 use sampling::Sampler;
@@ -26,22 +25,26 @@ pub enum WorkerError {
     Failed(String),
 }
 
-/// Per-device worker owning a model instance and cache manager.
+/// Per-device worker owning a model instance and sampler.
 ///
 /// # Example
 ///
 /// ```
-/// use cache::{BlockPool, CacheManager, SlotLayout};
 /// use engine::Worker;
 ///
-/// let pool = BlockPool::new(2, SlotLayout::new(4, 8, 1)).unwrap();
-/// let manager = CacheManager::new(pool);
-/// let _ = manager.sequence_count();
+/// struct Dummy;
+/// impl model::Model for Dummy {
+///     fn forward(&mut self, input: &candle_core::Tensor, _start_pos: usize) -> candle_core::Result<candle_core::Tensor> {
+///         Ok(input.clone())
+///     }
+///     fn metadata(&self) -> model::ModelMetadata {
+///         model::ModelMetadata { model_type: "dummy".into(), vocab_size: 1, hidden_size: 1, num_hidden_layers: 1 }
+///     }
+/// }
 /// ```
 pub struct Worker<M> {
     model: M,
     sampler: Sampler,
-    cache: CacheManager,
     device: Device,
 }
 
@@ -49,19 +52,13 @@ impl<M> Worker<M>
 where
     M: Model,
 {
-    /// Creates a worker over an owned model, sampler, cache manager, and device.
-    pub fn new(model: M, sampler: Sampler, cache: CacheManager, device: Device) -> Self {
+    /// Creates a worker over an owned model, sampler, and device.
+    pub fn new(model: M, sampler: Sampler, device: Device) -> Self {
         Self {
             model,
             sampler,
-            cache,
             device,
         }
-    }
-
-    /// Returns the cache manager owned by this worker.
-    pub const fn cache(&self) -> &CacheManager {
-        &self.cache
     }
 
     /// Runs one scheduled batch and samples one next token per entry.

@@ -9,5 +9,4 @@ candle-core = { workspace = true }
 cache = { workspace = true }
 model = { workspace = true }
 sampling = { workspace = true }
-tensor = { workspace = true }
 thiserror = { workspace = true }

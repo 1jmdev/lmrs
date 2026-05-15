@@ -1,6 +1,19 @@
 use candle_core::{Result, Tensor};
 use ops::attention::{SdpaConfig, repeat_kv, sdpa};
 
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct SequenceId(u64);
+
+impl SequenceId {
+    pub const fn new(id: u64) -> Self {
+        Self(id)
+    }
+
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AttentionContext {
     Prefill,

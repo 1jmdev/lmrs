@@ -235,8 +235,6 @@ dependencies = [
  "candle-core",
  "candle-nn",
  "ops",
- "runtime",
- "tensor",
  "thiserror 2.0.18",
 ]
 
@@ -747,7 +745,6 @@ dependencies = [
  "candle-core",
  "model",
  "sampling",
- "tensor",
  "thiserror 2.0.18",
 ]
 
@@ -1841,7 +1838,6 @@ dependencies = [
  "safetensors 0.7.0",
  "serde",
  "serde_json",
- "tensor",
 ]
 
 [[package]]
@@ -2407,15 +2403,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "runtime"
-version = "0.1.0"
-dependencies = [
- "candle-core",
- "cudarc 0.19.6",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "rustix"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2822,16 +2809,6 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "tensor"
-version = "0.1.0"
-dependencies = [
- "candle-core",
- "cudarc 0.19.6",
- "runtime",
- "thiserror 2.0.18",
 ]
 
 [[package]]

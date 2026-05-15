@@ -1,4 +1,3 @@
-use cache::{BlockPool, CacheManager, SlotLayout};
 use candle_core::{Device, Result, Tensor};
 use engine::{
     EngineExecutor, Scheduler, SchedulerBudget, Sequence, SequenceGroup, Worker, WorkerHandle,
@@ -48,10 +47,8 @@ impl Model for ScriptModel {
 #[test]
 fn full_prefill_and_decode_loop_runs_without_server() {
     let device = Device::Cpu;
-    let pool = BlockPool::new(8, SlotLayout::new(4, 16, 1)).unwrap();
-    let cache = CacheManager::new(pool);
     let model = ScriptModel::new(vec![3, 4, 5], 8);
-    let worker = Worker::new(model, Sampler::default(), cache, device);
+    let worker = Worker::new(model, Sampler::default(), device);
     let handle = WorkerHandle::spawn(worker);
 
     let sequence = Sequence::new(cache::SequenceId::new(1), vec![1, 2], 3, Some(5)).unwrap();
